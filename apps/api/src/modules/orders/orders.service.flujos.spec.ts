@@ -1,0 +1,593 @@
+/**
+ * Caracterizacion de los flujos de `OrdersService` que mueven mesas y
+ * productos y que no tenian ni una prueba: reclamar mesa al crear, candado de
+ * lo ya comandado, entregar, borrar/anular y fusionar.
+ *
+ * Se prueba el efecto que importa en la base (que se escribe, con que filtro)
+ * y no solo que "lanza". La regla de las mesas es la de CLAUDE.md: liberar
+ * SIEMPRE los 3 campos (status, isAvailable, orderId) o la mesa queda roja.
+ */
+import { Test } from '@nestjs/testing';
+import { getModelToken } from '@nestjs/mongoose';
+import {
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+} from '@nestjs/common';
+import { OrdersService } from './orders.service';
+import { Order } from './schemas/order.schema';
+import { Table } from '../tables/schemas/table.schema';
+import { PosGateway } from '../websockets/gateways/pos.gateway';
+import { AuthService } from '../auth/auth.service';
+import { PaymentsService } from '../payments/payments.service';
+import { OcrService } from '../ocr/ocr.service';
+import { OrderItemEventsService } from './order-item-events.service';
+import { PagoMovilService } from '../pago-movil/pago-movil.service';
+import { ConsumptionService } from '../inventory/consumption.service';
+import { AccountsReceivableService } from '../accounts-receivable/accounts-receivable.service';
+import { MovementsService } from '../inventory/movements.service';
+import { KitchenNotifierService } from '../push/kitchen-notifier.service';
+import { SociosExcluidosService } from '../socios-excluidos/socios-excluidos.service';
+import { CreateOrderDto } from './dto/create-order.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
+import { TableStatusEnum, OrderStatusEnum } from '@odin6/types';
+import { configsDePrueba } from './configs-de-prueba';
+
+type AuthUser = Parameters<OrdersService['remove']>[1];
+
+/**
+ * Consulta de Mongoose falsa: sirve igual con `await q`, `q.lean()`,
+ * `q.lean().exec()` y `q.select(...)`, que es como la usa el servicio.
+ */
+interface ConsultaFalsa<T> extends PromiseLike<T> {
+  lean: () => ConsultaFalsa<T>;
+  select: () => ConsultaFalsa<T>;
+  exec: () => Promise<T>;
+}
+const consulta = <T>(valor: T): ConsultaFalsa<T> => {
+  const q: ConsultaFalsa<T> = {
+    lean: () => q,
+    select: () => q,
+    exec: () => Promise.resolve(valor),
+    then: (ok, error) => Promise.resolve(valor).then(ok, error),
+  };
+  return q;
+};
+
+/** Los 3 campos que dejan una mesa libre en el POS. */
+const MESA_LIBRE = {
+  status: TableStatusEnum.ISAVAILABLE,
+  isAvailable: true,
+  orderId: null,
+};
+
+const admin: AuthUser = { id: 'admin-1', name: 'Admin', role: 'admin' };
+const mesonero: AuthUser = { id: 'w-1', name: 'Mesonero', role: 'waiter' };
+
+describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
+  let service: OrdersService;
+  let orderModel: Record<string, jest.Mock>;
+  let tableModel: Record<string, jest.Mock>;
+  let userModel: Record<string, jest.Mock>;
+  let verifyAdminPin: jest.Mock;
+  let recordEvent: jest.Mock;
+
+  beforeEach(async () => {
+    orderModel = {
+      findOne: jest.fn().mockReturnValue(consulta(null)),
+      findOneAndUpdate: jest.fn().mockReturnValue(consulta(null)),
+      updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+      deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 }),
+      create: jest.fn(),
+    };
+    tableModel = {
+      findOne: jest.fn().mockReturnValue(consulta(null)),
+      findOneAndUpdate: jest
+        .fn()
+        .mockReturnValue(consulta({ _id: 'mesa-1', ...MESA_LIBRE })),
+    };
+    userModel = {
+      findOne: jest
+        .fn()
+        .mockReturnValue(consulta({ _id: 'w-1', name: 'Mesonero' })),
+    };
+    verifyAdminPin = jest.fn();
+    recordEvent = jest.fn();
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        configsDePrueba(),
+        OrdersService,
+        { provide: getModelToken(Order.name), useValue: orderModel },
+        { provide: getModelToken(Table.name), useValue: tableModel },
+        {
+          provide: getModelToken('User'),
+          useValue: userModel,
+        },
+        {
+          provide: getModelToken('Product'),
+          useValue: { find: jest.fn().mockReturnValue(consulta([])) },
+        },
+        { provide: getModelToken('Invoice'), useValue: {} },
+        { provide: getModelToken('Payment'), useValue: {} },
+        {
+          provide: PosGateway,
+          useValue: {
+            notifyOrderCreated: jest.fn(),
+            notifyOrderUpdated: jest.fn(),
+            notifyOrderDeleted: jest.fn(),
+            notifyTableUpdated: jest.fn(),
+          },
+        },
+        { provide: AuthService, useValue: { verifyAdminPin } },
+        {
+          provide: PaymentsService,
+          useValue: { checkReferenceUsed: jest.fn().mockResolvedValue(false) },
+        },
+        { provide: OcrService, useValue: {} },
+        {
+          provide: OrderItemEventsService,
+          useValue: { record: recordEvent, recordMany: jest.fn() },
+        },
+        { provide: PagoMovilService, useValue: {} },
+        {
+          provide: ConsumptionService,
+          useValue: { reverseOrder: jest.fn().mockResolvedValue(undefined) },
+        },
+        { provide: AccountsReceivableService, useValue: {} },
+        {
+          provide: MovementsService,
+          useValue: { emit: jest.fn().mockResolvedValue({}) },
+        },
+        {
+          provide: KitchenNotifierService,
+          useValue: { itemsDelivered: jest.fn() },
+        },
+        {
+          provide: SociosExcluidosService,
+          useValue: { esExcluido: jest.fn().mockResolvedValue(false) },
+        },
+      ],
+    }).compile();
+    service = moduleRef.get(OrdersService);
+  });
+
+  // ─── create: reclamo atomico de la mesa ───────────────────────────────
+  describe('create con mesa', () => {
+    const dto = (): CreateOrderDto => ({
+      items: [
+        {
+          productId: 'p1',
+          quantity: 1,
+          unitPrice: 10,
+          totalPrice: 10,
+          name: 'Hamburguesa',
+        },
+      ],
+      subtotal: 10,
+      total: 11,
+      serviceCharge: 1,
+      userId: 'cajero-1',
+      waiterId: 'w-1',
+      tableId: 'mesa-1',
+      orderNumber: '260926-0001',
+    });
+
+    it('reclama la mesa solo si esta libre o reservada por quien crea', async () => {
+      orderModel.create.mockImplementation((payload: object) =>
+        Promise.resolve({
+          _id: 'orden-1',
+          ...payload,
+          toObject: () => ({ _id: 'orden-1', ...payload }),
+        }),
+      );
+
+      await service.create(dto());
+
+      const [filtro, cambio] = tableModel.findOneAndUpdate.mock.calls[0];
+      expect(filtro).toEqual({
+        _id: 'mesa-1',
+        orderId: null,
+        $or: [
+          { isAvailable: true },
+          { isAvailable: false, claimedBy: { $in: ['cajero-1', 'w-1'] } },
+        ],
+      });
+      expect(cambio).toMatchObject({
+        status: TableStatusEnum.OCCUPIED,
+        isAvailable: false,
+        orderId: 'PENDING_ORDER_CREATION',
+      });
+      // Y al final la mesa apunta a la orden real, no al marcador.
+      const ultimo = tableModel.findOneAndUpdate.mock.calls.at(-1);
+      expect(JSON.stringify(ultimo)).toContain('orden-1');
+    });
+
+    it('si la mesa ya tiene una orden activa, no crea nada', async () => {
+      tableModel.findOneAndUpdate.mockReturnValueOnce(consulta(null));
+      orderModel.findOne.mockReturnValueOnce(
+        consulta({ _id: 'abcdef1234567890', status: 'PENDING' }),
+      );
+
+      await expect(service.create(dto())).rejects.toThrow(
+        /ya tiene una orden activa \(#34567890/,
+      );
+      expect(orderModel.create).not.toHaveBeenCalled();
+    });
+
+    it('si otro mesonero la esta atendiendo, lo dice con su nombre', async () => {
+      tableModel.findOneAndUpdate.mockReturnValueOnce(consulta(null));
+      tableModel.findOne.mockReturnValueOnce(
+        consulta({ claimedBy: 'w-9', claimedByName: 'Jostin' }),
+      );
+
+      await expect(service.create(dto())).rejects.toThrow(
+        'La mesa la esta atendiendo Jostin.',
+      );
+      expect(orderModel.create).not.toHaveBeenCalled();
+    });
+
+    it('si crear la orden falla, devuelve la mesa libre (rollback)', async () => {
+      orderModel.create.mockRejectedValue(new Error('mongo caido'));
+
+      await expect(service.create(dto())).rejects.toThrow('mongo caido');
+
+      const rollback = tableModel.findOneAndUpdate.mock.calls[1];
+      expect(rollback[0]).toEqual({
+        _id: 'mesa-1',
+        orderId: 'PENDING_ORDER_CREATION',
+      });
+      expect(rollback[1]).toEqual(MESA_LIBRE);
+    });
+  });
+
+  // ─── update: candado de lo ya comandado ───────────────────────────────
+  describe('update: quitar lo ya comandado', () => {
+    beforeEach(() => {
+      orderModel.findOne.mockReturnValue(
+        consulta({
+          _id: 'orden-1',
+          serviceCharge: 0,
+          items: [
+            {
+              _id: 'item-1',
+              productId: 'p1',
+              name: 'Cerveza',
+              quantity: 6,
+              unitPrice: 5,
+              total: 30,
+              sentQty: 6,
+            },
+          ],
+        }),
+      );
+    });
+
+    const quitarTodo = (extra: Partial<UpdateOrderDto> = {}): UpdateOrderDto =>
+      ({ items: [], ...extra }) as UpdateOrderDto;
+
+    const estadoDe = async (p: Promise<unknown>): Promise<number | null> => {
+      try {
+        await p;
+        return null;
+      } catch (err: unknown) {
+        return err instanceof HttpException ? err.getStatus() : -1;
+      }
+    };
+
+    it('sin PIN ni motivo responde 428 y no escribe', async () => {
+      await expect(
+        estadoDe(service.update('orden-1', quitarTodo(), admin)),
+      ).resolves.toBe(428);
+      expect(verifyAdminPin).not.toHaveBeenCalled();
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('con PIN pero sin motivo tambien responde 428', async () => {
+      await expect(
+        estadoDe(
+          service.update('orden-1', quitarTodo({ editPin: '1234' }), admin),
+        ),
+      ).resolves.toBe(428);
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('con un PIN invalido responde 428 y no escribe', async () => {
+      verifyAdminPin.mockResolvedValue({ valid: false });
+
+      await expect(
+        estadoDe(
+          service.update(
+            'orden-1',
+            quitarTodo({ editPin: '0000', editReason: 'se equivoco' }),
+            admin,
+          ),
+        ),
+      ).resolves.toBe(428);
+      expect(verifyAdminPin).toHaveBeenCalledWith('0000');
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── deliverItem ──────────────────────────────────────────────────────
+  describe('deliverItem', () => {
+    const orden = (item: Record<string, unknown>) => ({
+      _id: 'orden-1',
+      items: [
+        { _id: 'item-0', name: 'Pizza', quantity: 1, deliveredQty: 1 },
+        {
+          _id: 'item-1',
+          productId: 'p1',
+          name: 'Cerveza',
+          quantity: 3,
+          ...item,
+        },
+      ],
+    });
+
+    it('suma lo entregado sobre el item por su indice y deja el evento', async () => {
+      orderModel.findOne.mockReturnValue(consulta(orden({ deliveredQty: 1 })));
+
+      await service.deliverItem('orden-1', 'item-1', 2, admin);
+
+      expect(orderModel.updateOne).toHaveBeenCalledWith(
+        { _id: 'orden-1' },
+        { $inc: { 'items.1.deliveredQty': 2 } },
+      );
+      expect(recordEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'ITEM_DELIVERED',
+          qty: 2,
+          previousDeliveredQty: 1,
+          newDeliveredQty: 3,
+          actorId: 'admin-1',
+        }),
+      );
+    });
+
+    it('no entrega mas de lo pedido', async () => {
+      orderModel.findOne.mockReturnValue(consulta(orden({ deliveredQty: 2 })));
+
+      await expect(
+        service.deliverItem('orden-1', 'item-1', 2, admin),
+      ).rejects.toThrow('No se pueden entregar 4 unidades');
+      expect(orderModel.updateOne).not.toHaveBeenCalled();
+    });
+
+    it('no entrega un item cancelado', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta(orden({ deliveredQty: 0, cancelledAt: new Date() })),
+      );
+
+      await expect(
+        service.deliverItem('orden-1', 'item-1', 1, admin),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(orderModel.updateOne).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── remove / cancelWithPin ───────────────────────────────────────────
+  describe('remove', () => {
+    it('libera la mesa con los 3 campos y borra la orden', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta({ _id: 'orden-1', tableId: 'mesa-1', items: [] }),
+      );
+
+      await service.remove('orden-1', admin);
+
+      expect(tableModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'mesa-1' },
+        MESA_LIBRE,
+        { new: true },
+      );
+      expect(orderModel.deleteOne).toHaveBeenCalledWith({ _id: 'orden-1' });
+    });
+
+    it('un mesonero no borra la orden de otro', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta({ _id: 'orden-1', waiterId: 'w-9', userId: 'w-9' }),
+      );
+
+      await expect(service.remove('orden-1', mesonero)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(tableModel.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(orderModel.deleteOne).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cancelWithPin', () => {
+    it('solo un admin puede anular: el PIN de un manager no sirve', async () => {
+      verifyAdminPin.mockResolvedValue({ valid: true, adminRole: 'manager' });
+
+      await expect(service.cancelWithPin('orden-1', '1234')).rejects.toThrow(
+        'PIN invalido',
+      );
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('anula sin borrar: libera la mesa y deja la orden marcada', async () => {
+      verifyAdminPin.mockResolvedValue({
+        valid: true,
+        adminRole: 'admin',
+        adminName: 'Dueño',
+      });
+      orderModel.findOne.mockReturnValue(
+        consulta({ _id: 'orden-1', tableId: 'mesa-1' }),
+      );
+
+      await service.cancelWithPin('orden-1', '1234', 'cliente se fue');
+
+      expect(tableModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'mesa-1' },
+        MESA_LIBRE,
+        { new: true },
+      );
+      const [filtro, cambio] = orderModel.findOneAndUpdate.mock.calls[0];
+      expect(filtro).toEqual({ _id: 'orden-1' });
+      expect(cambio.$set).toMatchObject({
+        status: OrderStatusEnum.CANCELLED,
+        isDeleted: true,
+        deletedBy: 'Dueño',
+        deletedReason: 'cliente se fue',
+      });
+      expect(orderModel.deleteOne).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── mergeOrders ──────────────────────────────────────────────────────
+  describe('mergeOrders', () => {
+    const base = {
+      items: [] as Array<Record<string, unknown>>,
+      subtotal: 0,
+      serviceCharge: 0,
+      tax: 0,
+      total: 0,
+      status: 'PENDING',
+    };
+    let destino: Record<string, unknown> & {
+      save: jest.Mock;
+      markModified: jest.Mock;
+    };
+
+    beforeEach(() => {
+      verifyAdminPin.mockResolvedValue({ valid: true, adminId: 'admin-1' });
+      destino = {
+        ...base,
+        _id: 'destino',
+        tableId: 'mesa-1',
+        fichaNonce: 'vieja',
+        items: [
+          {
+            _id: 'a',
+            productId: 'p1',
+            name: 'Pizza',
+            quantity: 1,
+            unitPrice: 8,
+            total: 8,
+          },
+        ],
+        subtotal: 8,
+        total: 8,
+        save: jest.fn().mockResolvedValue(undefined),
+        markModified: jest.fn(),
+      };
+      destino.toObject = () => ({ ...destino });
+      const origen = {
+        ...base,
+        _id: 'origen',
+        tableId: 'mesa-2',
+        items: [
+          {
+            _id: 'b',
+            productId: 'p2',
+            name: 'Cerveza',
+            quantity: 2,
+            unitPrice: 2,
+            total: 4,
+          },
+        ],
+        subtotal: 4,
+        total: 4,
+      };
+      origen.toObject = () => ({ ...origen });
+      orderModel.findOne.mockImplementation((f: { _id: string }) =>
+        consulta(f._id === 'destino' ? destino : origen),
+      );
+    });
+
+    it('marca el origen como fusionado solo si nadie lo fusiono antes', async () => {
+      orderModel.findOneAndUpdate.mockReturnValue(consulta({ _id: 'origen' }));
+
+      await service.mergeOrders('destino', 'origen', '1234');
+
+      const [filtro, cambio] = orderModel.findOneAndUpdate.mock.calls[0];
+      expect(filtro).toEqual({
+        _id: 'origen',
+        mergedIntoOrderId: { $exists: false },
+        isDeleted: { $ne: true },
+      });
+      expect(cambio.$set).toMatchObject({
+        mergedIntoOrderId: 'destino',
+        isDeleted: true,
+        mergedBy: 'admin-1',
+      });
+    });
+
+    it('pasa los items al destino, revoca su ficha y libera la mesa del origen', async () => {
+      orderModel.findOneAndUpdate.mockReturnValue(consulta({ _id: 'origen' }));
+
+      await service.mergeOrders('destino', 'origen', '1234');
+
+      expect(destino.save).toHaveBeenCalled();
+      expect((destino.items as unknown[]).length).toBe(2);
+      expect(destino.mergedFromOrderIds).toEqual(['origen']);
+      expect(destino.fichaNonce).not.toBe('vieja');
+      expect(tableModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'mesa-2', orderId: 'origen' },
+        MESA_LIBRE,
+        { new: true },
+      );
+    });
+
+    it('si otra caja lo fusiono primero, no toca el destino ni la mesa', async () => {
+      orderModel.findOneAndUpdate.mockReturnValue(consulta(null));
+
+      await expect(
+        service.mergeOrders('destino', 'origen', '1234'),
+      ).rejects.toThrow(/fusionada o anulada por otra caja/);
+      expect(destino.save).not.toHaveBeenCalled();
+      expect(tableModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  // 27/09/2026: pos-data devolvia la coleccion `users` entera, con el hash de
+  // la contraseña y el PIN de admin en texto plano, a cualquiera que abriera
+  // el POS o el telefono del mesonero.
+  describe('getPosData — usuarios sin datos sensibles', () => {
+    const usuarioCompleto = {
+      _id: 'u-1',
+      name: 'Carlos',
+      role: 'admin',
+      isActive: true,
+      email: 'carlos@example.com',
+      passwordHash: '$2b$10$hash',
+      pin: '1234',
+      pinHash: '$2b$10$pinhash',
+    };
+
+    beforeEach(() => {
+      orderModel.find = jest.fn().mockReturnValue({
+        lean: () => ({ sort: () => ({ exec: () => Promise.resolve([]) }) }),
+      });
+      tableModel.find = jest.fn().mockReturnValue(consulta([]));
+    });
+
+    it('aunque Mongo devuelva todo, solo salen id, nombre, rol y activo', async () => {
+      userModel.find = jest.fn().mockReturnValue(consulta([usuarioCompleto]));
+
+      const { users } = await service.getPosData();
+
+      expect(users).toEqual([
+        {
+          id: 'u-1',
+          _id: 'u-1',
+          name: 'Carlos',
+          role: 'admin',
+          isActive: true,
+        },
+      ]);
+    });
+
+    it('pide a Mongo solo esos campos', async () => {
+      const select = jest.fn();
+      const q = consulta([usuarioCompleto]);
+      select.mockReturnValue(q);
+      userModel.find = jest.fn().mockReturnValue({ ...q, select });
+
+      await service.getPosData();
+
+      expect(select).toHaveBeenCalledWith('_id name role isActive');
+    });
+  });
+});

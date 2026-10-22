@@ -1,0 +1,12 @@
+# Directorios de build de Next.js
+.next/
+
+# Directorios de módulos
+node_modules/
+
+# Directorios de output generales
+dist/
+build/
+
+# Archivos de Next.js que no deberían ser formateados manualmente
+public/

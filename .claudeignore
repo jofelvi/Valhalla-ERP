@@ -1,0 +1,43 @@
+# Dependencias
+node_modules/
+.next/
+.vercel/
+mobile/node_modules/
+print-service/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build artifacts
+dist/
+out/
+mobile/.expo/
+print-service/dist/
+
+# Scripts de migracion (uno-time)
+migrate-*.mjs
+patch-*.mjs
+fix-*.mjs
+export-base-excel.mjs
+query-comisiones.mjs
+
+# Archivos de datos grandes
+*.csv
+BEBIDAS_PRECIOS.md
+PLATOS_MENU.md
+BEBIDAS_INVENTARIO.md
+productos-base.csv
+
+# Credenciales (nunca leer)
+serviceAccountKey.json
+.env.local
+.env.production
+.env*.local
+
+# Assets
+public/images/
+mobile/assets/
+
+# Cache
+.turbo/

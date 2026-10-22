@@ -1,0 +1,11 @@
+export { default as TarjetaDeMesa } from './TarjetaDeMesa';
+export { default as MapaDeMesas } from './MapaDeMesas';
+export { default as PagosPorVerificar } from './PagosPorVerificar';
+export { default as ModalDeTraspaso } from './ModalDeTraspaso';
+export { default as ModalAlias } from './ModalAlias';
+export { default as ModalRechazo } from './ModalRechazo';
+export { default as ModalReset } from './ModalReset';
+export { default as ModalFusion } from './ModalFusion';
+export { POSModeBar } from './POSModeBar';
+export { MesaSidePanel } from './MesaSidePanel';
+export { ZonesCompactPanel } from './ZonesCompactPanel';

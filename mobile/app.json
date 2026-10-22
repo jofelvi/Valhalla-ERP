@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "Valhalla ERP",
+    "slug": "punto-de-venta",
+    "scheme": "pos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1D1D1F"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.pos",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Necesitamos tu ubicacion para verificar que estas en el local al registrar asistencia",
+        "NSCameraUsageDescription": "Necesitamos la camara para tomar la selfie de asistencia",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1D1D1F"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "pan",
+      "package": "com.example.pos",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "versionCode": 1
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "Valhalla ERP",
+      "shortName": "Valhalla",
+      "themeColor": "#1D1D1F",
+      "backgroundColor": "#1D1D1F"
+    },
+    "experiments": {
+      "baseUrl": "/app"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Necesitamos tu ubicacion para verificar que estas en el local al registrar asistencia"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#B8955A"
+        }
+      ]
+    ]
+  }
+}

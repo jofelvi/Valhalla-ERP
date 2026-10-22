@@ -1,0 +1,7 @@
+.vercel
+serviceAccountKey.json
+# Configuracion de cada PC de caja: no se versiona
+caja/caja.env
+# Certificados y logs de la instalacion
+certs/
+logs/

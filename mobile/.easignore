@@ -1,0 +1,52 @@
+# .easignore — qué NO sube EAS al build (cuando existe, reemplaza a .gitignore
+# para decidir el upload). Igual que .gitignore PERO google-services.json SÍ se
+# sube (el plugin de Firebase lo necesita en el build de Android en la nube).
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+.gradle/
+build/
+android/.gradle/
+android/build/
+android/app/build/
+
+# NOTA: google-services.json NO se ignora aquí a propósito → EAS lo sube al build.
+
+# La llave de publicacion de Play no tiene nada que hacer dentro del binario.
+play-service-account.json

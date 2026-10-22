@@ -1,0 +1,178 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   SISTEMA DE TEMAS
+   Los colores de marca NO viven aquí: los inyecta `src/app/layout.tsx` desde la
+   configuración del negocio (`marca.palette`, ver `src/lib/paleta.ts`). Los valores
+   de abajo son el respaldo neutro por si la API no responde al cargar.
+
+   Estos pares son los de la paleta neutra por defecto, medidos con la fórmula de
+   luminancia relativa de la WCAG. El ratio va anotado en cada línea: AAA >= 7,
+   AA >= 4.5, "grande" >= 3 (solo sirve para texto de 24px o de 19px en negrita).
+
+   La trampa que gobierna la paleta: un color de marca CLARO no admite texto blanco
+   encima. Por eso existe --text-on-brand y por eso NO se escribe `text-white` sobre un
+   fondo de marca: el texto que va encima de la marca lo decide la paleta.
+   ============================================================ */
+
+/* TEMA OSCURO (default de respaldo) */
+:root {
+  --bg-page: #0f1115;
+  --bg-surface: #151922;
+  --bg-elevated: #1b2130;
+  --bg-sidebar: #0f1115;
+  --clr-line: #2a3142;
+  --clr-line-hover: #3a4358;
+  --text-content: #e8ecf4; /* AAA */
+  --text-dim: #9aa4b8; /* AA */
+
+  /* Marca */
+  --clr-primary: #4c8df6;
+  --clr-primary-dark: #2f6fd8;
+  --clr-primary-light: #7fb0fa;
+  --clr-accent: #9b82f0;
+
+  /* Estado */
+  --clr-success: #52c77a;
+  --clr-danger: #e85d52;
+  --clr-warning: #e8a852;
+  --clr-info: #4a8fd0;
+
+  /* Texto sobre un fondo de marca (oscuro sobre color claro) */
+  --text-on-brand: #0b1220;
+
+  /* Toast y especiales (derivados de la paleta) */
+  --toast-bg: var(--bg-elevated);
+  --toast-text: var(--text-content);
+  --overlay: rgba(0, 0, 0, 0.7);
+  --shadow: #000000;
+}
+
+/* TEMA CLARO (respaldo) */
+[data-theme='light'] {
+  --bg-page: #f4f6fa;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f8fafd;
+  --bg-sidebar: #ffffff;
+  --clr-line: #d8dee9;
+  --clr-line-hover: #c3ccdb;
+  --text-content: #111827;
+  --text-dim: #5b6578;
+
+  /* Marca */
+  --clr-primary: #1d4ed8;
+  --clr-primary-dark: #1e3a8a;
+  --clr-primary-light: #3b82f6;
+  --clr-accent: #6d4fc4;
+
+  /* Estado */
+  --clr-success: #1f7a3d;
+  --clr-danger: #b3342b;
+  --clr-warning: #9a5b0c;
+  --clr-info: #2b5e9e;
+
+  --text-on-brand: #ffffff;
+
+  --toast-bg: var(--bg-elevated);
+  --toast-text: var(--text-content);
+  --overlay: rgba(0, 0, 0, 0.3);
+  --shadow: rgba(0, 0, 0, 0.1);
+}
+
+/* Mapeo a utilidades Tailwind */
+@theme inline {
+  /* Fondos temáticos */
+  --color-page: var(--bg-page);
+  --color-surface: var(--bg-surface);
+  --color-elevated: var(--bg-elevated);
+  --color-sidebar: var(--bg-sidebar);
+  /* Borde */
+  --color-line: var(--clr-line);
+  --color-line-hover: var(--clr-line-hover);
+  /* Texto */
+  --color-content: var(--text-content);
+  --color-dim: var(--text-dim);
+  /* Marca */
+  --color-brand: var(--clr-primary);
+  --color-brand-dark: var(--clr-primary-dark);
+  --color-brand-light: var(--clr-primary-light);
+  --color-accent: var(--clr-accent);
+  --color-ok: var(--clr-success);
+  --color-danger: var(--clr-danger);
+  --color-warn: var(--clr-warning);
+  --color-info: var(--clr-info);
+  /* Texto sobre la marca. Genera `text-on-brand` y `bg-on-brand`:
+     se usa SIEMPRE que el fondo sea `bg-brand`/`bg-accent`, nunca
+     directamente `text-white`. */
+  --color-on-brand: var(--text-on-brand);
+  /* Especiales */
+  --color-toast-bg: var(--toast-bg);
+  --color-toast-text: var(--toast-text);
+  --color-overlay: var(--overlay);
+  --color-shadow: var(--shadow);
+  /* Fuentes: las define `layout.tsx` (next/font) en el <body>. No se redeclaran aquí
+     porque `--font-sans: var(--font-sans)` sería un ciclo. */
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg-page);
+  color: var(--text-content);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar principal de alta calidad */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--clr-line);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--clr-line-hover);
+}
+
+/* Scrollbar del sidebar */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px; /* Aún más fino en el sidebar para look moderno */
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: var(--clr-line);
+  border-radius: 2px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--clr-line-hover);
+}
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--clr-line) transparent;
+}
+
+/* ── El recibo es PAPEL, no una superficie del tema ──────────────────────────
+ * El contenedor es `bg-white` fijo (simula el ticket y es lo que se imprime),
+ * pero su contenido usaba los tokens del tema: en modo oscuro la tinta se
+ * volvía clara y la factura quedaba ilegible sobre el papel blanco (19/08/2026).
+ * Aquí se fija la tinta a los valores del tema claro dentro del papel, así el
+ * recibo se ve igual en pantalla, en oscuro y al imprimir — que es justo lo que
+ * se espera de algo que representa un documento físico.
+ */
+.receipt-print {
+  --text-content: #09090b;
+  --text-dim: #52525b;
+  --clr-line: #d4d4d8;
+  --clr-line-hover: #a1a1aa;
+  color: var(--text-content);
+}

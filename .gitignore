@@ -1,0 +1,28 @@
+node_modules/
+.next/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+mobile/android/
+mobile/ios/
+test-results/
+playwright-report/
+# Llaves y credenciales: nunca al repo
+*.p8
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist
+# Sin llaves en esta lista: el escaner de Tailwind v4 las expande mal y deja el CSS vacio (ver CLAUDE.md)
+
+# Instancias: los .env de cada cliente son locales al VPS; solo la plantilla se versiona
+instancias/*.env
+!instancias/*.env.example
+*.tsbuildinfo
+apps/api/src/version.generated.ts
+next-env.d.ts

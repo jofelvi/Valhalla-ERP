@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["jest", "node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.test.ts"],
+  "exclude": [
+    "node_modules",
+    "print-service",
+    "apps",
+    "mobile",
+    "whatsapp-ingestor",
+    "landing",
+    "packages"
+  ]
+}

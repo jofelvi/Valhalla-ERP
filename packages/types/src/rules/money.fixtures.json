@@ -1,0 +1,260 @@
+[
+  {
+    "name": "orden simple: 2 items x $10, con servicio",
+    "items": [
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      },
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 20,
+      "noChargeAmount": 0,
+      "discountAmount": 0,
+      "serviceCharge": 2,
+      "total": 22,
+      "comisionBase": 20
+    }
+  },
+  {
+    "name": "cortesía: 1 item cortesía $10 + 1 item pagado $10, con servicio",
+    "items": [
+      {
+        "total": 10,
+        "noCharge": true,
+        "discountAmount": 0,
+        "cancelledAt": null
+      },
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 20,
+      "noChargeAmount": 10,
+      "discountAmount": 0,
+      "serviceCharge": 2,
+      "total": 12,
+      "comisionBase": 10
+    }
+  },
+  {
+    "name": "descuento: 2 items x $10, descuento $4, con servicio",
+    "items": [
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 2,
+        "cancelledAt": null
+      },
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 2,
+        "cancelledAt": null
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 20,
+      "noChargeAmount": 0,
+      "discountAmount": 4,
+      "serviceCharge": 1.6,
+      "total": 17.6,
+      "comisionBase": 16
+    }
+  },
+  {
+    "name": "cortesía + descuento: 1 cortesía $5 + 1 pagado $10 con $3 descuento",
+    "items": [
+      {
+        "total": 5,
+        "noCharge": true,
+        "discountAmount": 0,
+        "cancelledAt": null
+      },
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 3,
+        "cancelledAt": null
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 15,
+      "noChargeAmount": 5,
+      "discountAmount": 3,
+      "serviceCharge": 1.2,
+      "total": 8.2,
+      "comisionBase": 7
+    }
+  },
+  {
+    "name": "item cancelado: 2 items, 1 cancelado, con servicio",
+    "items": [
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      },
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": 1234567890
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 10,
+      "noChargeAmount": 0,
+      "discountAmount": 0,
+      "serviceCharge": 1,
+      "total": 11,
+      "comisionBase": 10
+    }
+  },
+  {
+    "name": "sin servicio: 2 items x $10, sin mesonero",
+    "items": [
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      },
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      }
+    ],
+    "hadServiceCharge": false,
+    "expected": {
+      "subtotal": 20,
+      "noChargeAmount": 0,
+      "discountAmount": 0,
+      "serviceCharge": 0,
+      "total": 20,
+      "comisionBase": 0
+    }
+  },
+  {
+    "name": "redondeo .xx5: items con precios que suman 10.125 (redondea a .13, mitad hacia arriba)",
+    "items": [
+      {
+        "total": 10.125,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 10.13,
+      "noChargeAmount": 0,
+      "discountAmount": 0,
+      "serviceCharge": 1.01,
+      "total": 11.14,
+      "comisionBase": 10.13
+    }
+  },
+  {
+    "name": "cortesía total: 1 item $5 cortesía, nada pagado",
+    "items": [
+      {
+        "total": 5,
+        "noCharge": true,
+        "discountAmount": 0,
+        "cancelledAt": null
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 5,
+      "noChargeAmount": 5,
+      "discountAmount": 0,
+      "serviceCharge": 0.5,
+      "total": 0.5,
+      "comisionBase": 0
+    }
+  },
+  {
+    "name": "complejo: 4 items mezcla de cortesía, descuento y normal",
+    "items": [
+      {
+        "total": 20,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      },
+      {
+        "total": 10,
+        "noCharge": true,
+        "discountAmount": 0,
+        "cancelledAt": null
+      },
+      {
+        "total": 15,
+        "noCharge": false,
+        "discountAmount": 5,
+        "cancelledAt": null
+      },
+      {
+        "total": 5,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": 1
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 45,
+      "noChargeAmount": 10,
+      "discountAmount": 5,
+      "serviceCharge": 4,
+      "total": 34,
+      "comisionBase": 30
+    }
+  },
+  {
+    "name": "items sin monto (undefined/null → 0)",
+    "items": [
+      {
+        "total": 10,
+        "noCharge": false,
+        "discountAmount": 0,
+        "cancelledAt": null
+      },
+      {
+        "discountAmount": 0,
+        "cancelledAt": null
+      }
+    ],
+    "hadServiceCharge": true,
+    "expected": {
+      "subtotal": 10,
+      "noChargeAmount": 0,
+      "discountAmount": 0,
+      "serviceCharge": 1,
+      "total": 11,
+      "comisionBase": 10
+    }
+  }
+]

@@ -1,0 +1,17 @@
+packages:
+  - packages/*
+  - apps/*
+
+allowBuilds:
+  '@firebase/util': set this to true or false
+  '@nestjs/core': set this to true or false
+  '@scarf/scarf': set this to true or false
+  bcrypt: set this to true or false
+  core-js: set this to true or false
+  mongodb-memory-server: set this to true or false
+  puppeteer: set this to true or false
+  sharp: set this to true or false
+  unrs-resolver: set this to true or false
+  ws: set this to true or false
+
+approveBuildsPackages: '@nestjs/core bcrypt mongodb-memory-server unrs-resolver'

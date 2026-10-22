@@ -1,0 +1,67 @@
+{
+  "cli": {
+    "version": ">= 16.0.0"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "APP_NOMBRE": "Punto de venta",
+        "APP_BUNDLE_ID": "com.example.pos",
+        "APP_ANDROID_PACKAGE": "com.example.pos",
+        "EXPO_PUBLIC_API_URL": "https://api.example.com",
+        "EXPO_PUBLIC_WS_URL": "https://api.example.com"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
+    "pre": {
+      "distribution": "internal",
+      "env": {
+        "APP_VARIANTE": "pre",
+        "APP_NOMBRE": "Punto de venta",
+        "APP_BUNDLE_ID": "com.example.pos",
+        "APP_ANDROID_PACKAGE": "com.example.pos",
+        "EXPO_PUBLIC_API_URL": "https://pre-api.example.com",
+        "EXPO_PUBLIC_WS_URL": "https://pre-api.example.com"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
+    "production": {
+      "env": {
+        "APP_NOMBRE": "Punto de venta",
+        "APP_BUNDLE_ID": "com.example.pos",
+        "APP_ANDROID_PACKAGE": "com.example.pos",
+        "EXPO_PUBLIC_API_URL": "https://api.example.com",
+        "EXPO_PUBLIC_WS_URL": "https://api.example.com"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {}
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./play-service-account.json",
+        "track": "internal"
+      },
+      "ios": {
+        "ascAppId": "REEMPLAZAR-con-el-id-de-App-Store-Connect",
+        "ascApiKeyPath": "./AuthKey_REEMPLAZAR.p8",
+        "ascApiKeyId": "REEMPLAZAR",
+        "ascApiKeyIssuerId": "REEMPLAZAR"
+      }
+    }
+  }
+}

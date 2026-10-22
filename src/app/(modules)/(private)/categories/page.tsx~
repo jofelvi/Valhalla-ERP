@@ -1,0 +1,141 @@
+'use client';
+
+import Link from 'next/link';
+import {Button} from "@/components/shared/button/Button";
+import {categoryService} from "@/services/firebase/genericServices";
+import {Badge} from "@/components/shared/badge/badge";
+import {Card, CardContent, CardHeader, CardTitle} from "@/components/shared/card/card";
+import Image from 'next/image';
+import {useEffect, useState} from 'react';
+import {Category} from '@/types/category';
+import {getProductsByCategory} from '@/services/firebase/productServices';
+import Loader from "@/components/shared/Loader/Loader";
+import {DeleteConfirmationModal} from '@/app/components/categories/DeleteConfirmationModal';
+import {FiPlus,} from "react-icons/fi";
+import {EmptyState} from "@/components/shared/EmptyState/EmptyState";
+import {EntityGrid} from "@/components/shared/EntityGrid/EntityGrid";
+
+export default function CategoriesPage() {
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+    const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+    const [productsInCategory, setProductsInCategory] = useState<string[]>([]);
+    const [deleting, setDeleting] = useState(false);
+
+    useEffect(() => {
+        const fetchCategories = async () => {
+            setLoading(true);
+            const cats = await categoryService.getAll();
+            setCategories(cats);
+            setLoading(false);
+        };
+
+        fetchCategories();
+    }, []);
+
+    useEffect(() => {
+        const fetchProducts = async () => {
+            if (categoryToDelete) {
+                const products = await getProductsByCategory(categoryToDelete.id);
+                setProductsInCategory(products.map(p => p.name));
+            }
+        };
+
+        if (categoryToDelete) {
+            fetchProducts();
+        }
+    }, [categoryToDelete]);
+
+    const handleDeleteClick = (category: Category) => {
+        setCategoryToDelete(category);
+        setDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (categoryToDelete) {
+            setDeleting(true);
+            try {
+                await categoryService.delete(categoryToDelete.id);
+                setCategories(categories.filter(c => c.id !== categoryToDelete.id));
+                setDeleteModalOpen(false);
+            } catch (error) {
+                console.error('Error eliminando categoría:', error);
+            } finally {
+                setDeleting(false);
+                setCategoryToDelete(null);
+            }
+        }
+    };
+
+    if (loading) {
+        return <Loader fullScreen text="Cargando categorías..." />;
+    }
+
+    return (
+        <div className="min-h-screen bg-page/30">
+            <DeleteConfirmationModal
+                isOpen={deleteModalOpen}
+                onClose={() => setDeleteModalOpen(false)}
+                onConfirm={confirmDelete}
+                title={`¿Eliminar categoría ${categoryToDelete?.name}?`}
+                description="Esta acción no se puede deshacer. Todos los productos asociados a esta categoría perderán su clasificación."
+                isLoading={deleting}
+                items={productsInCategory}
+            />
+
+            <div className="container mx-auto px-6 py-8">
+                {/* Header Section */}
+                <div className="mb-8">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                            <h1 className="text-3xl font-semibold text-gray-900 tracking-tight">
+                                Categorías
+                            </h1>
+                            <p className="text-dim mt-1">
+                                Gestiona las categorías de tu inventario
+                            </p>
+                        </div>
+                        <Link href="/categories/new">
+                            <Button
+                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all duration-200 px-6"
+                                size="md"
+                            >
+                                <FiPlus className="w-4 h-4 mr-2" />
+                                Nueva Categoría
+                            </Button>
+                        </Link>
+                    </div>
+                </div>
+
+                {/* Categories Grid */}
+                <EntityGrid<Category>
+                    items={categories}
+                    basePath="/categories"
+                    imageKey="imageUrl"
+                    nameKey="name"
+                    descriptionKey="description"
+                    statusKey="isActive"
+                    statusLabels={{
+                        'true': 'Disponible',
+                        'false': 'Inactivo'
+                    }}
+                    statusColors={{
+                        'true': 'bg-ok text-ok border-green-200',
+                        'false': 'bg-danger text-danger border-danger'
+                    }}
+                    onDelete={handleDeleteClick}
+                    emptyState={
+                        <EmptyState
+                            title="No hay categorías"
+                            description="Comienza creando tu primera categoría para organizar mejor tu inventario."
+                            actionLabel="Crear Primera Categoría"
+                            actionHref="/categories/new"
+                            actionIcon={<FiPlus className="w-4 h-4" />}
+                        />
+                    }
+                />
+            </div>
+        </div>
+    );
+}

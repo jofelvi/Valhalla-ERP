@@ -1,0 +1,5 @@
+# Commits que SOLO reformatean. Para que `git blame` los saltee:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style(repo): aplicar prettier a los 412 archivos que estaban sin formatear
+36d0fa2cb874398413484bd365a9751d550026ed

@@ -1,0 +1,105 @@
+import React, { forwardRef } from 'react';
+import {FieldValues, UseFormRegister} from 'react-hook-form';
+
+export interface SelectOption {
+    value: string | number;
+    label: string;
+    disabled?: boolean;
+}
+
+interface CustomSelectProps<T extends FieldValues> {
+    id: string;
+    label?: string;
+    options: SelectOption[];
+    value?: string | number;
+    onChange?: (value: string) => void;
+    error?: string | boolean;
+    required?: boolean;
+    disabled?: boolean;
+    placeholder?: string;
+    className?: string;
+    labelClassName?: string;
+    selectClassName?: string;
+    errorClassName?: string;
+    register?: UseFormRegister<T>;
+    name?: keyof T;
+}
+
+// @ts-ignore
+const CustomSelectInner = <T extends FieldValues>(
+    {
+        id,
+        label,
+        options,
+        value,
+        onChange,
+        error,
+        required = false,
+        disabled = false,
+        placeholder = 'Seleccionar...',
+        className = '',
+        labelClassName = 'block text-sm font-medium text-dim',
+        selectClassName = '',
+        errorClassName = 'mt-1 text-sm text-danger',
+        register,
+        name,
+        ...props
+    }: CustomSelectProps<T>,
+    ref: React.Ref<HTMLSelectElement>
+) => {
+    const hasError = Boolean(error);
+    const registerProps = register && name ? register(name as any) : {};
+
+    return (
+        <div className={`space-y-1 ${className}`}>
+            {label && (
+                <label
+                    htmlFor={id}
+                    className={`${labelClassName} ${disabled ? 'text-dim' : ''}`}
+                >
+                    {label} {required && <span className="text-danger">*</span>}
+                </label>
+            )}
+
+            <select
+                id={id}
+                ref={ref}
+                value={value}
+                onChange={(e) => onChange?.(e.target.value)}
+                disabled={disabled}
+                className={`w-full border ${
+                    hasError
+                        ? 'border-danger focus:ring-red-500 focus:border-danger'
+                        : disabled
+                            ? 'border-line bg-page text-dim'
+                            : 'border-line focus:ring-blue-500 focus:border-blue-500'
+                } rounded-md shadow-sm py-2 px-3 focus:outline-none ${selectClassName}`}
+                {...registerProps}
+                {...props}
+            >
+                <option value="" disabled>
+                    {placeholder}
+                </option>
+                {options.map((option) => (
+                    <option
+                        key={option.value}
+                        value={option.value}
+                        disabled={option.disabled}
+                    >
+                        {option.label}
+                    </option>
+                ))}
+            </select>
+
+            {hasError && typeof error === 'string' && (
+                <p className={errorClassName}>{error}</p>
+            )}
+        </div>
+    );
+};
+
+const CustomSelect = forwardRef(CustomSelectInner) as <T extends FieldValues>(
+    props: CustomSelectProps<T> & { ref?: React.Ref<HTMLSelectElement> }
+) => ReturnType<typeof CustomSelectInner>;
+
+export default CustomSelect;

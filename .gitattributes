@@ -1,0 +1,11 @@
+# Los scripts de shell van SIEMPRE con LF, pase lo que pase.
+#
+# Este repo se trabaja en Windows y git convierte a CRLF en el working tree.
+# Un .sh con CRLF NO arranca en Linux: falla con
+#   /bin/bash^M: bad interpreter: No such file or directory
+# y como los scripts de despliegue y de reversion se instalan en el VPS
+# copiandolos desde aqui, esa conversion los romperia en el peor momento.
+*.sh text eol=lf
+
+# Igual para lo que se ejecuta en el servidor por otra via.
+*.mjs text eol=lf
