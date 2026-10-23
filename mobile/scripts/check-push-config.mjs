@@ -33,7 +33,9 @@ const failures = [];
 const servicesPath = app.android?.googleServicesFile;
 const androidPackage = app.android?.package;
 
-if (!servicesPath) {
+if (process.env.EAS_BUILD_PLATFORM === 'ios') {
+  // Build solo de iOS: FCM es de Android y no aplica; se valida abajo lo de iOS.
+} else if (!servicesPath) {
   failures.push(
     'falta google-services.json en mobile/ (Firebase del cliente): sin el, no hay push Android',
   );
@@ -87,5 +89,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Config de push OK — Android FCM (${androidPackage}) + iOS APNs (${app.ios.bundleIdentifier})`,
+  process.env.EAS_BUILD_PLATFORM === 'ios'
+    ? `Config de push OK — iOS APNs (${app.ios.bundleIdentifier})`
+    : `Config de push OK — Android FCM (${androidPackage}) + iOS APNs (${app.ios.bundleIdentifier})`,
 );
