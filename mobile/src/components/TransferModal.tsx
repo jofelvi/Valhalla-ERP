@@ -20,6 +20,7 @@ import {
 import { tableService, orderService } from '../services';
 import { Table, TableStatusEnum, ZoneSectorEnum } from '../types';
 import { showAlert } from '../utils/alert';
+import { esZonaVisible } from '../config/zonas';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -30,6 +31,7 @@ interface SectorInfo {
 }
 
 const SECTORS: SectorInfo[] = [
+  { key: ZoneSectorEnum.EVENTO, label: 'Evento', emoji: '\u{1F389}' },
   { key: ZoneSectorEnum.PISCINA, label: 'Piscina', emoji: '\u{1F3CA}' },
   { key: ZoneSectorEnum.TENIS, label: 'Tenis', emoji: '\u{1F3BE}' },
   { key: ZoneSectorEnum.FUTBOL, label: 'Futbol', emoji: '\u26BD' },
@@ -43,6 +45,7 @@ const SECTORS: SectorInfo[] = [
 ];
 
 const SECTOR_LABELS: Record<ZoneSectorEnum, string> = {
+  [ZoneSectorEnum.EVENTO]: 'Evento',
   [ZoneSectorEnum.PISCINA]: 'Piscina',
   [ZoneSectorEnum.TENIS]: 'Tenis',
   [ZoneSectorEnum.FUTBOL]: 'Futbol',
@@ -93,7 +96,9 @@ export const TransferModal: React.FC<TransferModalProps> = ({
       t.status === TableStatusEnum.ISAVAILABLE && t.id !== sourceOrder.tableId,
   );
 
-  const availableSectors = SECTORS.filter((s) => s.key !== sourceOrder.sector);
+  const availableSectors = SECTORS.filter(
+    (s) => s.key !== sourceOrder.sector && esZonaVisible(s.key),
+  );
 
   const sourceLabel = sourceOrder.tableName
     ? sourceOrder.tableName

@@ -1,6 +1,6 @@
 import Modal from '@/components/shared/modal';
 import { Order } from '@/modelTypes/order';
-import { ZoneSectorEnum } from '@/shared';
+import { ZONAS_VISIBLES, ZoneSectorEnum } from '@/shared';
 import { Table } from '@/modelTypes/table';
 import {
   ArrowRightLeft,
@@ -259,7 +259,8 @@ export default function ModalDeTraspaso({
             {Object.entries(SECTOR_LABELS)
               .filter(
                 ([sector]) =>
-                  origen === 'mesa' || sector !== sourceOrder?.sector,
+                  ZONAS_VISIBLES.includes(sector as ZoneSectorEnum) &&
+                  (origen === 'mesa' || sector !== sourceOrder?.sector),
               )
               .map(([sector, label]) => (
                 <button

@@ -15,6 +15,7 @@ interface ZonesCompactPanelProps {
 }
 
 const ZONE_LABELS: Record<string, string> = {
+  evento: 'Evento',
   salon_principal: 'Salón',
   piscina: 'Piscina',
   tenis: 'Tenis',

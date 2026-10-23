@@ -7,7 +7,7 @@ import { usePOSData } from '@/hooks/useOrders';
 import { useUserStore } from '@/shared/store/useUserStore';
 import { Card } from '@/components/shared/card/card';
 import Loader from '@/components/shared/Loader/Loader';
-import { PRIVATE_ROUTES, ZoneSectorEnum } from '@/shared';
+import { PRIVATE_ROUTES, ZONAS_VISIBLES, ZoneSectorEnum } from '@/shared';
 import {
   MapPin,
   Plus,
@@ -28,6 +28,7 @@ interface POSDataResponse {
 }
 
 const SECTOR_LABELS: Record<string, string> = {
+  [ZoneSectorEnum.EVENTO]: 'Evento',
   [ZoneSectorEnum.PISCINA]: 'Piscina',
   [ZoneSectorEnum.TENIS]: 'Tenis',
   [ZoneSectorEnum.FUTBOL]: 'Futbol',
@@ -37,6 +38,7 @@ const SECTOR_LABELS: Record<string, string> = {
 };
 
 const SECTOR_ICONS: Record<string, string> = {
+  [ZoneSectorEnum.EVENTO]: '🎉',
   [ZoneSectorEnum.PISCINA]: '🏊',
   [ZoneSectorEnum.TENIS]: '🎾',
   [ZoneSectorEnum.FUTBOL]: '⚽',
@@ -72,7 +74,10 @@ export default function WaiterZonesPage() {
     return grouped;
   }, [myZoneOrders]);
 
-  const allSectors = Object.values(ZoneSectorEnum);
+  // Las zonas visibles, más cualquier zona oculta que todavía tenga pedidos (no se pierden de vista).
+  const allSectors = Array.from(
+    new Set<string>([...ZONAS_VISIBLES, ...Object.keys(ordersBySector)]),
+  );
 
   const toggleSector = (sector: string) => {
     setExpanded((prev) => {

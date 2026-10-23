@@ -55,6 +55,7 @@ interface NestAccount {
 }
 
 const sectorLabels: Record<string, string> = {
+  evento: 'Evento',
   piscina: 'Piscina',
   tenis: 'Tenis',
   futbol: 'Futbol',

@@ -7,7 +7,7 @@ import { Card } from '@/components/shared/card/card';
 import { Badge } from '@/components/shared/badge/badge';
 import { Button } from '@/components/shared/button/Button';
 import { formatSmartTime } from '@/shared/utils/dateHelpers';
-import { PRIVATE_ROUTES, ZoneSectorEnum } from '@/shared';
+import { PRIVATE_ROUTES, ZONAS_VISIBLES, ZoneSectorEnum } from '@/shared';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRightLeft,
@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 
 const SECTOR_LABELS: Record<string, string> = {
+  [ZoneSectorEnum.EVENTO]: 'Evento',
   [ZoneSectorEnum.PISCINA]: 'Piscina',
   [ZoneSectorEnum.TENIS]: 'Tenis',
   [ZoneSectorEnum.FUTBOL]: 'Futbol',
@@ -33,6 +34,7 @@ const SECTOR_LABELS: Record<string, string> = {
 };
 
 const SECTOR_ICONS: Record<string, string> = {
+  [ZoneSectorEnum.EVENTO]: '🎉',
   [ZoneSectorEnum.PISCINA]: '🏊',
   [ZoneSectorEnum.TENIS]: '🎾',
   [ZoneSectorEnum.FUTBOL]: '⚽',
@@ -115,7 +117,10 @@ export default function ZoneOrdersSection({
   };
 
   // Obtener sectores activos (con ordenes) + todos los del enum para mostrar
-  const allSectors = Object.values(ZoneSectorEnum);
+  // Las zonas visibles, más cualquier zona oculta que todavía tenga pedidos (no se pierden de vista).
+  const allSectors = Array.from(
+    new Set<string>([...ZONAS_VISIBLES, ...Object.keys(ordersBySector)]),
+  );
 
   // Agrupar ordenes dentro de cada sector por mesonero
   const getOrdersByWaiterInSector = (sectorOrders: Order[]) => {

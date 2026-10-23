@@ -6,11 +6,13 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "APP_NOMBRE": "Punto de venta",
-        "APP_BUNDLE_ID": "com.example.pos",
-        "APP_ANDROID_PACKAGE": "com.example.pos",
-        "EXPO_PUBLIC_API_URL": "https://api.example.com",
-        "EXPO_PUBLIC_WS_URL": "https://api.example.com"
+        "APP_NOMBRE": "Valhalla ERP",
+        "APP_BUNDLE_ID": "com.odincodex.valhalla",
+        "APP_ANDROID_PACKAGE": "com.odincodex.valhalla",
+        "EXPO_PUBLIC_API_URL": "https://pos-api.odincodex.com",
+        "EXPO_PUBLIC_WS_URL": "https://pos-api.odincodex.com",
+        "APP_SLUG": "valhalla-erp",
+        "APP_ESQUEMA": "valhalla"
       },
       "android": {
         "buildType": "apk"
@@ -38,11 +40,13 @@
     },
     "production": {
       "env": {
-        "APP_NOMBRE": "Punto de venta",
-        "APP_BUNDLE_ID": "com.example.pos",
-        "APP_ANDROID_PACKAGE": "com.example.pos",
-        "EXPO_PUBLIC_API_URL": "https://api.example.com",
-        "EXPO_PUBLIC_WS_URL": "https://api.example.com"
+        "APP_NOMBRE": "Valhalla ERP",
+        "APP_BUNDLE_ID": "com.odincodex.valhalla",
+        "APP_ANDROID_PACKAGE": "com.odincodex.valhalla",
+        "EXPO_PUBLIC_API_URL": "https://pos-api.odincodex.com",
+        "EXPO_PUBLIC_WS_URL": "https://pos-api.odincodex.com",
+        "APP_SLUG": "valhalla-erp",
+        "APP_ESQUEMA": "valhalla"
       },
       "android": {
         "buildType": "app-bundle"

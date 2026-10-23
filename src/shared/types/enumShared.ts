@@ -170,6 +170,7 @@ export enum OrderTypeEnum {
 }
 
 export enum ZoneSectorEnum {
+  EVENTO = 'evento',
   PISCINA = 'piscina',
   TENIS = 'tenis',
   FUTBOL = 'futbol',
@@ -177,6 +178,15 @@ export enum ZoneSectorEnum {
   SALON_PRINCIPAL = 'salon_principal',
   CANCHAS = 'canchas',
 }
+
+/**
+ * Zonas que se ofrecen hoy al crear o traspasar un pedido. Las demás siguen en el enum para que
+ * los pedidos ya hechos conserven su etiqueta, pero no se pueden elegir.
+ */
+export const ZONAS_VISIBLES: ZoneSectorEnum[] = [
+  ZoneSectorEnum.EVENTO,
+  ZoneSectorEnum.PISCINA,
+];
 
 export enum PayrollStatusEnum {
   DRAFT = 'draft',

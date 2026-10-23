@@ -56,6 +56,7 @@ import { useTarifas } from '../../config/hooks';
 import { pctTexto } from '../../config/totalesDeOrden';
 import { tarifasDeOrden } from '../../config/tarifasDeOrden';
 import { showAlert } from '../../utils/alert';
+import { CREDITO_HABILITADO } from '../../config/funciones';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'CashierPayment'>;
@@ -804,16 +805,18 @@ export const CashierPaymentScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Boton dejar pendiente */}
-        <TouchableOpacity
-          style={styles.pendingBtn}
-          onPress={handlePendingPayment}
-          disabled={isProcessing}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="time-outline" size={20} color={COLORS.warning} />
-          <Text style={styles.pendingBtnText}>Dejar Pendiente (Crédito)</Text>
-        </TouchableOpacity>
+        {/* Boton dejar pendiente (a crédito): oculto mientras CREDITO_HABILITADO sea false */}
+        {CREDITO_HABILITADO && (
+          <TouchableOpacity
+            style={styles.pendingBtn}
+            onPress={handlePendingPayment}
+            disabled={isProcessing}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="time-outline" size={20} color={COLORS.warning} />
+            <Text style={styles.pendingBtnText}>Dejar Pendiente (Crédito)</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Boton procesar */}
         {paymentEntries.length > 0 && (

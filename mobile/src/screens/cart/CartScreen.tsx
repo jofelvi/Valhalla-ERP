@@ -32,6 +32,7 @@ import { showAlert } from '../../utils/alert';
 import { formatearUsd } from '../../utils/dinero';
 
 import { useVocab } from '../../config/hooks';
+import { esZonaVisible } from '../../config/zonas';
 interface CartScreenProps {
   navigation: {
     navigate: (screen: string, params?: unknown) => void;
@@ -44,6 +45,7 @@ const ZONE_OPTIONS: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
+  { value: ZoneSectorEnum.EVENTO, label: 'Evento', icon: 'calendar-outline' },
   { value: ZoneSectorEnum.PISCINA, label: 'Piscina', icon: 'water-outline' },
   {
     value: ZoneSectorEnum.SALON_PRINCIPAL,
@@ -385,35 +387,37 @@ export const CartScreen: React.FC<CartScreenProps> = ({ navigation }) => {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.pillsContent}
           >
-            {ZONE_OPTIONS.map((zone) => (
-              <TouchableOpacity
-                key={zone.value}
-                style={[
-                  styles.pill,
-                  selectedSector === zone.value && styles.pillSelected,
-                ]}
-                onPress={() => setSelectedSector(zone.value)}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={zone.icon}
-                  size={18}
-                  color={
-                    selectedSector === zone.value
-                      ? COLORS.background
-                      : COLORS.textSecondary
-                  }
-                />
-                <Text
+            {ZONE_OPTIONS.filter((zone) => esZonaVisible(zone.value)).map(
+              (zone) => (
+                <TouchableOpacity
+                  key={zone.value}
                   style={[
-                    styles.pillText,
-                    selectedSector === zone.value && styles.pillTextSelected,
+                    styles.pill,
+                    selectedSector === zone.value && styles.pillSelected,
                   ]}
+                  onPress={() => setSelectedSector(zone.value)}
+                  activeOpacity={0.7}
                 >
-                  {zone.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Ionicons
+                    name={zone.icon}
+                    size={18}
+                    color={
+                      selectedSector === zone.value
+                        ? COLORS.background
+                        : COLORS.textSecondary
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.pillText,
+                      selectedSector === zone.value && styles.pillTextSelected,
+                    ]}
+                  >
+                    {zone.label}
+                  </Text>
+                </TouchableOpacity>
+              ),
+            )}
           </ScrollView>
         </View>
 

@@ -163,6 +163,7 @@ export enum OrderTypeEnum {
 }
 
 export enum ZoneSectorEnum {
+  EVENTO = 'evento',
   PISCINA = 'piscina',
   TENIS = 'tenis',
   FUTBOL = 'futbol',

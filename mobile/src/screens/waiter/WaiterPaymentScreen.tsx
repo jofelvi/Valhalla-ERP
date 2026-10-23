@@ -32,6 +32,7 @@ import {
   BORDER_RADIUS,
 } from '../../constants';
 import { showAlert } from '../../utils/alert';
+import { CREDITO_HABILITADO } from '../../config/funciones';
 import {
   orderService,
   tableService,
@@ -1424,7 +1425,7 @@ export const WaiterPaymentScreen: React.FC = () => {
           {!draftEntry && (
             <View style={styles.section}>
               {/* Botón solicitar crédito - solo si hay cliente real */}
-              {isRealCustomer && (
+              {CREDITO_HABILITADO && isRealCustomer && (
                 <TouchableOpacity
                   style={styles.creditRequestBtn}
                   onPress={() => setShowCreditModal(true)}

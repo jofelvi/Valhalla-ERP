@@ -64,6 +64,7 @@ import { useTarifas, useVocab } from '../../config/hooks';
 import { pctTexto, totalesDeSubtotal } from '../../config/totalesDeOrden';
 
 const SECTOR_LABELS: Record<ZoneSectorEnum, string> = {
+  [ZoneSectorEnum.EVENTO]: '\u{1F389} Evento',
   [ZoneSectorEnum.PISCINA]: '\u{1F3CA} Piscina',
   [ZoneSectorEnum.TENIS]: '\u{1F3BE} Tenis',
   [ZoneSectorEnum.FUTBOL]: '\u26BD Futbol',

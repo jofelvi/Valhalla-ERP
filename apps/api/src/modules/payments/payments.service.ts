@@ -438,6 +438,12 @@ export class PaymentsService {
       .select('total bcvRate')
       .lean()
       .exec();
+    // Un cobro sin orden no es de nadie: entraba a la caja y a los reportes sin pedido que lo respalde.
+    if (!orderForCheck) {
+      throw new NotFoundException(
+        `Orden ${createPaymentDto.orderId} no encontrada: no se puede cobrar un pedido que no existe`,
+      );
+    }
     if (pareceOtraMoneda(amount, orderForCheck?.total)) {
       this.logger.error(
         `Cobro rechazado por monto imposible: orden ${createPaymentDto.orderId} ` +

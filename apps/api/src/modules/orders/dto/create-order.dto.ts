@@ -10,8 +10,10 @@ import {
   ValidateIf,
   ArrayMaxSize,
   Matches,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { OrderStatusEnum, PaymentStatusEnum } from '@odin6/types';
 
 // La APK envia muchos campos como `null` explicito cuando no aplican
 // (ej: tableId:null en ordenes de zona). @IsOptional solo salta si la key
@@ -311,11 +313,17 @@ export class CreateOrderDto {
   @ApiProperty({ required: false, description: 'Order status' })
   @IsNullable()
   @IsString()
+  @IsIn(Object.values(OrderStatusEnum), {
+    message: `status debe ser uno de: ${Object.values(OrderStatusEnum).join(', ')}`,
+  })
   status?: string;
 
   @ApiProperty({ required: false, description: 'Payment status' })
   @IsNullable()
   @IsString()
+  @IsIn(Object.values(PaymentStatusEnum), {
+    message: `paymentStatus debe ser uno de: ${Object.values(PaymentStatusEnum).join(', ')}`,
+  })
   paymentStatus?: string;
 
   @ApiProperty({ required: false, description: 'Payment method' })

@@ -5,7 +5,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { CustomerNotifierService } from '../sms/customer-notifier.service';
 import { CustomerDebtService } from '../sms/customer-debt.service';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { Payment } from './schemas/payment.schema';
 
@@ -458,6 +458,31 @@ describe('PaymentsService', () => {
       expect(paymentModel.findOne).not.toHaveBeenCalledWith(
         expect.objectContaining({ clientRequestId: expect.anything() }),
       );
+    });
+  });
+
+  describe('create — pedido inexistente', () => {
+    it('rechaza con 404 un cobro cuya orden no existe y no crea nada', async () => {
+      paymentModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
+      orderModel.findOne.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue(null),
+          }),
+        }),
+      });
+
+      await expect(
+        service.create({
+          orderId: 'no-existe-123',
+          amount: 8,
+          method: 'CASH_USD',
+          userId: 'u1',
+        } as never),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(paymentModel.create).not.toHaveBeenCalled();
     });
   });
 });

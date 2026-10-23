@@ -27,6 +27,7 @@ export interface PushMessage {
 const BODY_MAX = 110;
 
 const SECTOR_LABELS: Record<string, string> = {
+  evento: 'Evento',
   piscina: 'Piscina',
   tenis: 'Tenis',
   futbol: 'Futbol',

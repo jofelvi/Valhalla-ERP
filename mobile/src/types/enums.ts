@@ -135,6 +135,7 @@ export enum AttendanceStatusEnum {
 }
 
 export enum ZoneSectorEnum {
+  EVENTO = 'evento',
   PISCINA = 'piscina',
   TENIS = 'tenis',
   FUTBOL = 'futbol',

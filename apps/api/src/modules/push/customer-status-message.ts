@@ -7,6 +7,7 @@ import { OrderStatusEnum } from '@odin6/types';
  */
 
 const SECTOR_LABELS: Record<string, string> = {
+  evento: 'Evento',
   piscina: 'Piscina',
   tenis: 'Tenis',
   futbol: 'Futbol',

@@ -131,4 +131,31 @@ describe('CreateOrderDto contra el ValidationPipe real', () => {
       expect(item.presentationQty).toBe(12);
     });
   });
+
+  describe('estados del pedido: un valor inválido es 400, no 500', () => {
+    const base = { userId: 'u1', items: [], subtotal: 0, total: 0 };
+
+    it('paymentStatus en mayúscula (PENDING) se rechaza con 400', async () => {
+      await expect(
+        pipe.transform({ ...base, paymentStatus: 'PENDING' }, meta),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('status en minúscula (pending) se rechaza con 400', async () => {
+      await expect(
+        pipe.transform({ ...base, status: 'pending' }, meta),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('los valores correctos pasan, y null explícito también', async () => {
+      const salida = (await pipe.transform(
+        { ...base, status: 'PENDING', paymentStatus: 'pending' },
+        meta,
+      )) as CreateOrderDto;
+      expect(salida.status).toBe('PENDING');
+      await expect(
+        pipe.transform({ ...base, status: null, paymentStatus: null }, meta),
+      ).resolves.toBeDefined();
+    });
+  });
 });

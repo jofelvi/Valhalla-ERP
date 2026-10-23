@@ -41,6 +41,7 @@ import {
 import { formatearUsd, formatearBs } from '../../utils/dinero';
 
 import { useVocab } from '../../config/hooks';
+import { esZonaVisible } from '../../config/zonas';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -52,7 +53,15 @@ interface SectorInfo {
   icon: keyof typeof Ionicons.glyphMap;
 }
 
+// Catálogo completo de zonas: las ocultas (ZONAS_VISIBLES) siguen con etiqueta para
+// los pedidos que aún están en ellas. Solo el selector de nueva orden se filtra.
 const SECTORS: SectorInfo[] = [
+  {
+    key: ZoneSectorEnum.EVENTO,
+    label: 'Evento',
+    emoji: '\u{1F389}',
+    icon: 'calendar-outline',
+  },
   {
     key: ZoneSectorEnum.PISCINA,
     label: 'Piscina',
@@ -445,19 +454,23 @@ export const ZonesScreen: React.FC = () => {
             </Text>
 
             <View style={styles.sectorGrid}>
-              {SECTORS.map((sector) => (
-                <TouchableOpacity
-                  key={sector.key}
-                  style={styles.sectorOption}
-                  onPress={() => handleNewOrder(sector.key)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.sectorOptionIcon}>
-                    <Text style={styles.sectorOptionEmoji}>{sector.emoji}</Text>
-                  </View>
-                  <Text style={styles.sectorOptionLabel}>{sector.label}</Text>
-                </TouchableOpacity>
-              ))}
+              {SECTORS.filter((sector) => esZonaVisible(sector.key)).map(
+                (sector) => (
+                  <TouchableOpacity
+                    key={sector.key}
+                    style={styles.sectorOption}
+                    onPress={() => handleNewOrder(sector.key)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.sectorOptionIcon}>
+                      <Text style={styles.sectorOptionEmoji}>
+                        {sector.emoji}
+                      </Text>
+                    </View>
+                    <Text style={styles.sectorOptionLabel}>{sector.label}</Text>
+                  </TouchableOpacity>
+                ),
+              )}
             </View>
 
             <Button

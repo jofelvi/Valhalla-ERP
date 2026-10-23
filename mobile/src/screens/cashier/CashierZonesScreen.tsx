@@ -34,6 +34,7 @@ import {
 import { formatearUsd, formatearBs } from '../../utils/dinero';
 
 import { useVocab } from '../../config/hooks';
+import { esZonaVisible } from '../../config/zonas';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -44,7 +45,10 @@ interface SectorInfo {
   emoji: string;
 }
 
+// Catálogo completo de zonas: las ocultas (ZONAS_VISIBLES) siguen con etiqueta para
+// los pedidos que aún están en ellas. Solo el selector de nueva orden se filtra.
 const SECTORS: SectorInfo[] = [
+  { key: ZoneSectorEnum.EVENTO, label: 'Evento', emoji: '\u{1F389}' },
   { key: ZoneSectorEnum.PISCINA, label: 'Piscina', emoji: '\u{1F3CA}' },
   { key: ZoneSectorEnum.TENIS, label: 'Tenis', emoji: '\u{1F3BE}' },
   { key: ZoneSectorEnum.FUTBOL, label: 'Futbol', emoji: '\u26BD' },
@@ -358,19 +362,23 @@ export const CashierZonesScreen: React.FC = () => {
               Elige la zona para el nuevo pedido
             </Text>
             <View style={styles.sectorGrid}>
-              {SECTORS.map((sector) => (
-                <TouchableOpacity
-                  key={sector.key}
-                  style={styles.sectorOption}
-                  onPress={() => handleNewOrder(sector.key)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.sectorOptionIcon}>
-                    <Text style={styles.sectorOptionEmoji}>{sector.emoji}</Text>
-                  </View>
-                  <Text style={styles.sectorOptionLabel}>{sector.label}</Text>
-                </TouchableOpacity>
-              ))}
+              {SECTORS.filter((sector) => esZonaVisible(sector.key)).map(
+                (sector) => (
+                  <TouchableOpacity
+                    key={sector.key}
+                    style={styles.sectorOption}
+                    onPress={() => handleNewOrder(sector.key)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.sectorOptionIcon}>
+                      <Text style={styles.sectorOptionEmoji}>
+                        {sector.emoji}
+                      </Text>
+                    </View>
+                    <Text style={styles.sectorOptionLabel}>{sector.label}</Text>
+                  </TouchableOpacity>
+                ),
+              )}
             </View>
             <Button
               label="Cancelar"
