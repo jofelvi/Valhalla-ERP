@@ -25,6 +25,7 @@ import { EmailService } from '../sms/email.service';
 describe('AuthService — login de cuentas migradas sin clave', () => {
   let service: AuthService;
   let guardado: boolean;
+  let buscar: jest.Mock;
 
   const construir = async (usuario: Record<string, unknown> | null) => {
     guardado = false;
@@ -38,6 +39,7 @@ describe('AuthService — login de cuentas migradas sin clave', () => {
           toObject: () => ({ ...usuario }),
         }
       : null;
+    buscar = jest.fn().mockResolvedValue(doc);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -50,7 +52,7 @@ describe('AuthService — login de cuentas migradas sin clave', () => {
         AuthService,
         {
           provide: getModelToken(User.name),
-          useValue: { findOne: jest.fn().mockResolvedValue(doc) },
+          useValue: { findOne: buscar },
         },
         { provide: getModelToken(Customer.name), useValue: {} },
         { provide: getModelToken(Member.name), useValue: {} },
@@ -110,6 +112,13 @@ describe('AuthService — login de cuentas migradas sin clave', () => {
     await expect(
       service.login({ email: BASE.email, password: 'otra' }),
     ).rejects.toThrow(/invalidas/i);
+  });
+
+  it('el correo se busca en minusculas y sin espacios (el telefono capitaliza)', async () => {
+    const hash = await bcrypt.hash('LaBuena123', 10);
+    await construir({ ...BASE, passwordHash: hash });
+    await service.login({ email: '  Orlando@Negocio.TEST ', password: 'LaBuena123' });
+    expect(buscar).toHaveBeenCalledWith({ email: BASE.email });
   });
 
   it('una cuenta desactivada no entra ni con la clave buena', async () => {

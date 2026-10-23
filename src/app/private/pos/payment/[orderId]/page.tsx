@@ -13,6 +13,7 @@ import {
   PaymentTypeEnum,
   TableStatusEnum,
 } from '@/shared';
+import { CREDITO_HABILITADO } from '@/shared/config/funciones';
 import {
   useCreateAccountsReceivable,
   useUpdateAccountsReceivable,
@@ -2677,16 +2678,18 @@ export default function PaymentPage({ params }: PageProps) {
                 )}
               </Card>
 
-              {/* ── Crédito Socio ── */}
-              <CreditoDeSocio
-                memberCredit={memberCredit}
-                isLoading={isLoadingCredit}
-                associateNumber={order?.associateNumber}
-                eligibleAmount={eligibleCreditAmount}
-                appliedAmount={appliedMemberCredit}
-                onApply={() => setAppliedMemberCredit(eligibleCreditAmount)}
-                onRemove={() => setAppliedMemberCredit(0)}
-              />
+              {/* ── Crédito Socio (oculto mientras CREDITO_HABILITADO sea false) ── */}
+              {CREDITO_HABILITADO && (
+                <CreditoDeSocio
+                  memberCredit={memberCredit}
+                  isLoading={isLoadingCredit}
+                  associateNumber={order?.associateNumber}
+                  eligibleAmount={eligibleCreditAmount}
+                  appliedAmount={appliedMemberCredit}
+                  onApply={() => setAppliedMemberCredit(eligibleCreditAmount)}
+                  onRemove={() => setAppliedMemberCredit(0)}
+                />
+              )}
 
               {/* ── Resumen de pago ── */}
               <ResumenYVuelto
@@ -2752,7 +2755,7 @@ export default function PaymentPage({ params }: PageProps) {
                   <FileText className="w-3.5 h-3.5" />
                   <span>{isPrintingPrecuenta ? '...' : 'Precuenta'}</span>
                 </Button>
-                {selectedCustomer ? (
+                {CREDITO_HABILITADO && selectedCustomer ? (
                   <Button
                     onClick={handlePendingPayment}
                     disabled={isProcessing}

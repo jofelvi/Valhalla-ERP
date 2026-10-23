@@ -140,7 +140,10 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const user = await this.userModel.findOne({ email: loginDto.email });
+    // El correo se compara sin mayusculas ni espacios: el teclado del telefono capitaliza la primera letra.
+    const user = await this.userModel.findOne({
+      email: loginDto.email.trim().toLowerCase(),
+    });
     if (!user) {
       throw new UnauthorizedException('Credenciales invalidas');
     }
@@ -213,9 +216,8 @@ export class AuthService {
     registerDto: RegisterDto,
     actor?: { id?: string; role?: string },
   ) {
-    const existing = await this.userModel.findOne({
-      email: registerDto.email,
-    });
+    const email = registerDto.email.trim().toLowerCase();
+    const existing = await this.userModel.findOne({ email });
     if (existing) {
       throw new BadRequestException('El email ya esta registrado');
     }
@@ -225,7 +227,7 @@ export class AuthService {
     const role = this.resolveRegisterRole(registerDto.role, actor);
 
     const user = await this.userModel.create({
-      email: registerDto.email,
+      email,
       name: registerDto.name,
       passwordHash,
       phone: registerDto.phone ?? undefined,
