@@ -3063,6 +3063,39 @@ export class OrdersService implements OnApplicationBootstrap {
     return hit ? String(hit._id) : null;
   }
 
+  /** Pedidos cobrados (no cancelados) tocados entre `desde` y `hasta`: candidatos a reponer comanda. */
+  async cobradosEntre(
+    desde: Date,
+    hasta: Date,
+  ): Promise<Array<Record<string, unknown> & { _id: unknown }>> {
+    return (await this.orderModel
+      .find(
+        {
+          isDeleted: { $ne: true },
+          paymentStatus: {
+            $in: [
+              PaymentStatusEnum.PENDING_VERIFICATION,
+              PaymentStatusEnum.PAID,
+              PaymentStatusEnum.PARTIAL,
+            ],
+          },
+          status: { $ne: OrderStatusEnum.CANCELLED },
+          updatedAt: { $gte: desde, $lte: hasta },
+        },
+        {
+          items: 1,
+          tableId: 1,
+          tableName: 1,
+          sector: 1,
+          orderType: 1,
+          waiterName: 1,
+          notes: 1,
+        },
+      )
+      .limit(200)
+      .lean()) as Array<Record<string, unknown> & { _id: unknown }>;
+  }
+
   /** Estado de cobro y nombres de producto de un pedido, para decidir si su comanda sale (prepago). */
   async resumenParaComanda(orderId: string): Promise<{
     paymentStatus?: unknown;

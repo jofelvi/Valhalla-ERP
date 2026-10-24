@@ -39,6 +39,10 @@ import {
   motivoParaRechazarComanda,
   prepagoActivo,
 } from './comanda-prepago.util';
+import {
+  comandaDesdePedido,
+  PedidoParaReponer,
+} from './comanda-desde-pedido.util';
 
 // Estaciones con control estricto: cada una entrega escaneando SU ficha.
 // Debe coincidir con CONTROLLED_STATIONS de orders.service.
@@ -68,6 +72,11 @@ interface ItemFichaImpresa {
 const PROCESSING_TRABADO_MS = 10 * 60 * 1000;
 const REVISION_TRABADOS_MS = 5 * 60 * 1000;
 
+// Reposicion de comandas del prepago (ver reponerComandasDePrepago).
+const REVISION_PREPAGO_MS = 15_000;
+const ESPERA_COMANDA_APP_MS = 30_000;
+const VENTANA_REPOSICION_MS = 6 * 60 * 60 * 1000;
+
 @Injectable()
 export class PrintQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrintQueueService.name);
@@ -88,10 +97,73 @@ export class PrintQueueService implements OnModuleInit, OnModuleDestroy {
     }, REVISION_TRABADOS_MS);
     // unref: este intervalo no debe impedir que el proceso termine.
     this.revisorTrabados.unref?.();
+    this.revisorPrepago = setInterval(() => {
+      void this.reponerComandasDePrepago();
+    }, REVISION_PREPAGO_MS);
+    this.revisorPrepago.unref?.();
   }
 
   onModuleDestroy(): void {
     if (this.revisorTrabados) clearInterval(this.revisorTrabados);
+    if (this.revisorPrepago) clearInterval(this.revisorPrepago);
+  }
+
+  private revisorPrepago?: ReturnType<typeof setInterval>;
+  private reponiendoPrepago = false;
+
+  /**
+   * Prepago: todo pedido cobrado sale con su comanda. Las APKs viejas la mandan al crear el
+   * pedido (se rechaza por no estar cobrado) y no al cobrar; la app nueva la manda al cobrar,
+   * pero si esa peticion se pierde, cocina tampoco se entera. Cada 15 s se buscan los pedidos
+   * cobrados hace mas de 30 s (tiempo de sobra para que la app mande la suya) sin ninguna
+   * comanda, y el servidor la arma desde el pedido.
+   */
+  private async reponerComandasDePrepago(): Promise<void> {
+    if (!prepagoActivo() || this.reponiendoPrepago) return;
+    this.reponiendoPrepago = true;
+    try {
+      const ahora = Date.now();
+      const pedidos = await this.ordersService.cobradosEntre(
+        new Date(ahora - VENTANA_REPOSICION_MS),
+        new Date(ahora - ESPERA_COMANDA_APP_MS),
+      );
+      if (pedidos.length === 0) return;
+      const { timezone } = await this.configs.obtener('operacion');
+      for (const pedido of pedidos) {
+        const id = String(pedido._id);
+        const sufijo = id.slice(-8).toUpperCase();
+        const yaTiene = await this.printJobModel.exists({
+          type: PrintJobType.COMANDA,
+          $or: [{ orderId: id }, { 'payload.orderNumber': sufijo }],
+        });
+        if (yaTiene) continue;
+        const instante = new Date();
+        const payload = comandaDesdePedido(
+          pedido as PedidoParaReponer,
+          diaMesAnio(instante, timezone),
+          horaMinuto(instante, timezone),
+        );
+        if (!payload) continue;
+        await this.create({
+          type: PrintJobType.COMANDA,
+          orderId: id,
+          waiterName:
+            typeof pedido.waiterName === 'string'
+              ? pedido.waiterName
+              : undefined,
+          payload,
+        });
+        this.logger.warn(
+          `[PrintQueue] comanda repuesta por el servidor para el pedido cobrado ${sufijo}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `[PrintQueue] fallo reponiendo comandas de prepago: ${error instanceof Error ? error.message : error}`,
+      );
+    } finally {
+      this.reponiendoPrepago = false;
+    }
   }
 
   /**
