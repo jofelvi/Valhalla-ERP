@@ -10,6 +10,7 @@ import {
   Req,
   UseGuards,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -59,14 +60,55 @@ import { RequiereModulo } from '../../common/modulos/requiere-modulo.decorator';
 
 type AuthedRequest = { user?: { id: string; role: string; name?: string } };
 
+// Grupos de roles. El cliente (CUSTOMER) solo entra donde se dice explicitamente;
+// todo lo demas es personal.
+const STAFF = [
+  UserRoleEnum.ADMIN,
+  UserRoleEnum.MANAGER,
+  UserRoleEnum.CASHIER,
+  UserRoleEnum.WAITER,
+  UserRoleEnum.KITCHEN,
+  UserRoleEnum.BAR,
+  UserRoleEnum.PIZZA,
+];
+// Dinero, cobro y cancelaciones: cocina, barra y pizza no tocan esto.
+const CAJA = [
+  UserRoleEnum.ADMIN,
+  UserRoleEnum.MANAGER,
+  UserRoleEnum.CASHIER,
+  UserRoleEnum.WAITER,
+];
+const GERENCIA = [UserRoleEnum.ADMIN, UserRoleEnum.MANAGER];
+const COBRO = [UserRoleEnum.ADMIN, UserRoleEnum.MANAGER, UserRoleEnum.CASHIER];
+const CLIENTE = [UserRoleEnum.CUSTOMER];
+// Lectura de ordenes: el personal ve todas; el cliente solo la suya (filtro en el handler).
+const LECTURA_ORDEN = [...STAFF, UserRoleEnum.CUSTOMER];
+// Crear orden: el carrito del cliente (APK) y el personal.
+const CREAR_ORDEN = [...STAFF, UserRoleEnum.CUSTOMER];
+
+/**
+ * Lectura de UNA orden: el personal la ve toda; el cliente solo si es la orden
+ * a la que se vinculo (customerId). Sin sesion, nunca.
+ */
+function assertDuenoOPersonal(
+  orden: { customerId?: string | null },
+  usuario: AuthedRequest['user'],
+): void {
+  if (!usuario) throw new ForbiddenException('Sesion requerida');
+  if (usuario.role !== UserRoleEnum.CUSTOMER) return;
+  if (orden.customerId && orden.customerId === usuario.id) return;
+  throw new ForbiddenException('Esta orden no es tuya');
+}
+
 @ApiTags('orders')
 @Controller('api/orders')
-@UseGuards(JwtAuthGuard, ModuloActivoGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ModuloActivoGuard)
 @ApiBearerAuth()
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Get('pos-data')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'Get combined POS data: activeOrders, tables, waiters',
   })
@@ -76,6 +118,7 @@ export class OrdersController {
   }
 
   @Post('generate-order-number')
+  @Roles(...STAFF)
   @ApiOperation({ summary: 'Atomically generate next order number for today' })
   @ApiResponse({ status: 201, description: 'Order number generated' })
   async generateOrderNumber() {
@@ -84,6 +127,7 @@ export class OrdersController {
   }
 
   @Post('commission/mark-paid')
+  @Roles(...GERENCIA)
   @ApiOperation({
     summary: 'Marcar comisión como pagada para un conjunto de órdenes (nómina)',
   })
@@ -96,12 +140,14 @@ export class OrdersController {
   }
 
   @Get('pending-verification')
+  @Roles(...COBRO)
   @ApiOperation({ summary: 'Get orders with pending payment verification' })
   async getPendingVerification() {
     return this.ordersService.findPendingVerification();
   }
 
   @Get()
+  @Roles(...LECTURA_ORDEN)
   @ApiOperation({ summary: 'List orders with optional filters' })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'paymentStatus', required: false })
@@ -160,8 +206,9 @@ export class OrdersController {
     @Query('view') view?: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string,
+    @Req() req?: AuthedRequest,
   ) {
-    return this.ordersService.findAll({
+    const filtros = {
       status,
       paymentStatus,
       tableId,
@@ -177,7 +224,17 @@ export class OrdersController {
       view,
       limit: limit !== undefined ? Number(limit) : undefined,
       page: page !== undefined ? Number(page) : undefined,
-    });
+    };
+    const usuario = req?.user;
+    if (!usuario) throw new ForbiddenException('Sesion requerida');
+    if (usuario.role === UserRoleEnum.CUSTOMER) {
+      // El cliente no ve el restaurante: solo sus propias ordenes (customerId).
+      const propias = await this.ordersService.findAll(filtros);
+      return propias.filter(
+        (o) => (o as { customerId?: string | null }).customerId === usuario.id,
+      );
+    }
+    return this.ordersService.findAll(filtros);
   }
 
   /**
@@ -193,6 +250,7 @@ export class OrdersController {
    * 'carga-por-mesonero' como un id de orden.
    */
   @Get('carga-por-mesonero')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'Ordenes por mesonero en la jornada actual (para el reparto)',
   })
@@ -213,6 +271,7 @@ export class OrdersController {
   }
 
   @Get('item-events/deliveries')
+  @Roles(...STAFF)
   @ApiOperation({
     summary:
       'Entregas (ITEM_DELIVERED) de un actor en un rango — resumen diario de barra/cocina',
@@ -233,6 +292,7 @@ export class OrdersController {
   }
 
   @Get('item-events/by-station')
+  @Roles(...STAFF)
   @ApiOperation({
     summary:
       'Historico de despachos de una estacion (barra/cocina/pizza) con mesonero/mesa',
@@ -251,6 +311,7 @@ export class OrdersController {
   }
 
   @Get(':id/item-events')
+  @Roles(...STAFF)
   @ApiOperation({ summary: 'Audit timeline (item events) for an order' })
   @ApiResponse({ status: 200, description: 'Events listed' })
   async getItemEvents(@Param('id') id: string) {
@@ -262,6 +323,7 @@ export class OrdersController {
   // resolucion por orden de declaracion no haga que ':id' capture 'ficha'.
 
   @Get('ficha/:token')
+  @Roles(...STAFF)
   @ApiOperation({ summary: 'Leer ficha de barra por token (escaneo)' })
   @ApiResponse({ status: 200, description: 'Ficha válida con ítems de barra' })
   @ApiResponse({ status: 404, description: 'Ficha no válida o anulada' })
@@ -271,6 +333,7 @@ export class OrdersController {
   }
 
   @Post('ficha/:token/deliver')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'Entregar (parcial o total) contra una ficha de barra',
   })
@@ -296,6 +359,7 @@ export class OrdersController {
   }
 
   @Post('ficha/:token/return')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'Registrar devolución de unidades contra una ficha',
   })
@@ -321,6 +385,7 @@ export class OrdersController {
   }
 
   @Get(':id/ficha')
+  @Roles(...STAFF)
   @ApiOperation({ summary: 'Obtener token + saldo de la ficha de una orden' })
   @ApiResponse({ status: 200, description: 'Ficha con token para QR' })
   @ApiResponse({ status: 404, description: 'Orden no encontrada' })
@@ -330,6 +395,7 @@ export class OrdersController {
   }
 
   @Post(':id/ficha/regenerate')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'Rotar el nonce de la ficha (revoca el papel viejo). PIN admin.',
   })
@@ -347,18 +413,21 @@ export class OrdersController {
   // ── Vinculo cliente↔orden por QR (declarar 'link/:token' antes de ':id') ──
 
   @Get(':id/link-token')
+  @Roles(...STAFF)
   @ApiOperation({ summary: 'Token del QR "Conectar cliente" de una orden' })
   async getLinkToken(@Param('id') id: string) {
     return this.ordersService.getOrCreateLinkToken(id);
   }
 
   @Post(':id/link-token/rotate')
+  @Roles(...STAFF)
   @ApiOperation({ summary: 'Rotar el QR de vinculo (revoca el anterior)' })
   async rotateLinkToken(@Param('id') id: string) {
     return this.ordersService.rotateLinkToken(id);
   }
 
   @Post('link/:token')
+  @Roles(...CLIENTE)
   @ApiOperation({
     summary: 'Vincular al cliente autenticado con la orden (escaneo QR)',
   })
@@ -374,6 +443,7 @@ export class OrdersController {
   }
 
   @Post(':id/customer-request')
+  @Roles(...CLIENTE)
   @ApiOperation({
     summary:
       'El cliente vinculado crea una solicitud (producto/llamar/pedir algo)',
@@ -389,6 +459,7 @@ export class OrdersController {
   }
 
   @Patch(':id/customer-request/:reqId/resolve')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'El staff resuelve una solicitud (aceptar/rechazar/reconocer)',
   })
@@ -408,6 +479,7 @@ export class OrdersController {
   }
 
   @Post(':id/request-bill')
+  @Roles(...CLIENTE)
   @ApiOperation({ summary: 'El cliente pide la cuenta' })
   async requestBill(@Param('id') id: string, @Req() req: AuthedRequest) {
     const customerId = req.user?.id;
@@ -416,14 +488,18 @@ export class OrdersController {
   }
 
   @Get(':id')
+  @Roles(...LECTURA_ORDEN)
   @ApiOperation({ summary: 'Get order by ID' })
   @ApiResponse({ status: 200, description: 'Order retrieved' })
   @ApiResponse({ status: 404, description: 'Order not found' })
-  async findById(@Param('id') id: string) {
-    return this.ordersService.findById(id);
+  async findById(@Param('id') id: string, @Req() req?: AuthedRequest) {
+    const orden = await this.ordersService.findById(id);
+    assertDuenoOPersonal(orden, req?.user);
+    return orden;
   }
 
   @Post()
+  @Roles(...CREAR_ORDEN)
   @ApiOperation({ summary: 'Create new order' })
   @ApiResponse({ status: 201, description: 'Order created' })
   async create(@Body() createOrderDto: CreateOrderDto) {
@@ -431,6 +507,7 @@ export class OrdersController {
   }
 
   @Patch(':id')
+  @Roles(...CAJA)
   @ApiOperation({ summary: 'Update order' })
   @ApiResponse({ status: 200, description: 'Order updated' })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -443,6 +520,7 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
+  @Roles(...CAJA)
   @ApiOperation({ summary: 'Update order status only' })
   @ApiResponse({ status: 200, description: 'Status updated' })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -455,6 +533,7 @@ export class OrdersController {
   }
 
   @Post(':id/items')
+  @Roles(...CAJA)
   @ApiOperation({ summary: 'Add item to existing order' })
   @ApiResponse({ status: 200, description: 'Item added' })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -467,6 +546,7 @@ export class OrdersController {
   }
 
   @Delete(':id/items/:itemIndex')
+  @Roles(...CAJA)
   @ApiOperation({ summary: 'Remove item from order by index' })
   @ApiResponse({ status: 200, description: 'Item removed' })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -482,6 +562,7 @@ export class OrdersController {
   // ───────── Acciones atomicas sobre items (Fase 2) ─────────
 
   @Patch(':id/items/:itemId/deliver')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'Cocina/barra marca item como entregado (incremento atomico)',
   })
@@ -506,6 +587,7 @@ export class OrdersController {
   }
 
   @Patch(':id/deliver-station/:station')
+  @Roles(...STAFF)
   @ApiOperation({
     summary:
       'Bulk: cocina/barra marca como entregados todos los items pendientes de la estacion',
@@ -521,6 +603,7 @@ export class OrdersController {
   }
 
   @Patch(':id/items/:itemId/cancel')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'Cancelar item (borrado logico, solo si deliveredQty=0). Sin PIN.',
   })
@@ -541,6 +624,7 @@ export class OrdersController {
   }
 
   @Post(':id/full-courtesy')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Cortesía TOTAL: toda la orden gratis (cliente paga $0). PIN admin + motivo OBLIGATORIOS. Cierra la orden, libera mesa y descuenta inventario. La comisión del mesonero se conserva.',
@@ -566,6 +650,7 @@ export class OrdersController {
   }
 
   @Patch(':id/items/:itemId/no-charge')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Marcar item como cortesia (no cobrar). Item permanece en factura. PIN admin OBLIGATORIO.',
@@ -591,6 +676,7 @@ export class OrdersController {
   }
 
   @Patch(':id/items/:itemId/discount')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Descuento parcial sobre una linea (% o monto). PIN admin y motivo OBLIGATORIOS. Baja la base del 10% de servicio.',
@@ -613,6 +699,7 @@ export class OrdersController {
   }
 
   @Delete(':id/items/:itemId/discount')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Quitar un descuento mal aplicado. PIN admin y motivo OBLIGATORIOS.',
@@ -630,6 +717,7 @@ export class OrdersController {
   }
 
   @Post(':id/descartar-sin-cobrar')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Descarta una orden recien creada que aun no se cobro (atras en la pantalla de cobro)',
@@ -639,15 +727,11 @@ export class OrdersController {
     status: 409,
     description: 'La orden ya tiene cobro o productos despachados',
   })
-  async descartarSinCobrar(
-    @Param('id') id: string,
-    @Req() req: AuthedRequest,
-  ) {
+  async descartarSinCobrar(@Param('id') id: string, @Req() req: AuthedRequest) {
     return this.ordersService.descartarSinCobrar(id, req.user);
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
   // Ninguna pantalla llama a esto: el POS resetea mesas con
   // `cancel-with-pin`, que exige PIN de admin y deja la orden anulada en vez
   // de borrarla. Sin rol, la ruta quedaba abierta a cualquiera con la sesion
@@ -666,6 +750,7 @@ export class OrdersController {
   }
 
   @Get(':id/opciones-conversion')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Conversiones a pack disponibles (tobo/media caja/caja). NO convierte nada.',
@@ -678,6 +763,7 @@ export class OrdersController {
   }
 
   @Post(':id/convertir-pack')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Aplica UNA conversion elegida. El precio lo pone el servidor, del catalogo.',
@@ -699,6 +785,7 @@ export class OrdersController {
   }
 
   @Post(':id/additional-notes')
+  @Roles(...STAFF)
   @ApiOperation({
     summary: 'Append an additional note to order (preserves original)',
   })
@@ -726,6 +813,7 @@ export class OrdersController {
   }
 
   @Patch(':id/cancel')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Soft delete order with admin PIN (status=CANCELLED, isDeleted=true)',
@@ -748,6 +836,7 @@ export class OrdersController {
   }
 
   @Post(':id/merge')
+  @Roles(...CAJA)
   @ApiOperation({
     summary:
       'Fusionar otra orden dentro de esta: mueve sus items y libera su mesa. PIN admin.',
@@ -775,6 +864,7 @@ export class OrdersController {
   // ─────────────────────────────────────────────────────────────
 
   @Post(':id/credit-request')
+  @Roles(...CAJA)
   @ApiOperation({
     summary: 'Mesonero solicita dejar pendiente (crédito) una orden',
   })
@@ -798,6 +888,7 @@ export class OrdersController {
   }
 
   @Post(':id/credit-request/cancel')
+  @Roles(...CAJA)
   @ApiOperation({
     summary: 'Mesonero cancela su solicitud de crédito pendiente',
   })
@@ -819,6 +910,7 @@ export class OrdersController {
   }
 
   @Post(':id/credit-request/approve')
+  @Roles(...COBRO)
   @ApiOperation({
     summary:
       'Admin aprueba solicitud de crédito con PIN (crea cuenta por cobrar, libera mesa)',
@@ -840,6 +932,7 @@ export class OrdersController {
   }
 
   @Post(':id/credit-request/reject')
+  @Roles(...COBRO)
   @ApiOperation({
     summary: 'Staff rechaza solicitud de crédito (sin PIN)',
   })
@@ -863,6 +956,7 @@ export class OrdersController {
   // ─────────────────────────────────────────────────────────────
 
   @Post(':id/transfer-request')
+  @Roles(...CAJA)
   @ApiOperation({
     summary: 'Camarero solicita transferir mesa a otro camarero',
   })
@@ -892,6 +986,7 @@ export class OrdersController {
   }
 
   @Post(':id/transfer-request/accept')
+  @Roles(...CAJA)
   @ApiOperation({
     summary: 'Camarero acepta transferencia de mesa (crea waiterShares)',
   })
@@ -914,6 +1009,7 @@ export class OrdersController {
   }
 
   @Post(':id/transfer-request/reject')
+  @Roles(...CAJA)
   @ApiOperation({
     summary: 'Camarero rechaza transferencia de mesa',
   })
@@ -940,6 +1036,7 @@ export class OrdersController {
   }
 
   @Post(':id/transfer-request/cancel')
+  @Roles(...CAJA)
   @ApiOperation({
     summary: 'Camarero cancela su solicitud de transferencia',
   })

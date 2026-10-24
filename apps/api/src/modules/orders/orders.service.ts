@@ -107,9 +107,15 @@ import { deliveryDeltas, inheritItemState } from './item-state.util';
 import {
   MENSAJE_AGREGAR_A_COBRADA,
   TOLERANCIA_COBRO,
+  cambioDeRebaja,
+  errorEnPagosPendientes,
   faltaParaCubrir,
   ordenEstaCobrada,
+  pagoVigente,
   pagosCubrenTotal,
+  primerPrecioBajo,
+  sumaPagosPendientes,
+  type PisoDeLinea,
 } from './cobro-guardas.util';
 import { toActorRole } from './to-actor-role.util';
 import { roundMoney } from './round-money.util';
@@ -135,6 +141,23 @@ export type AuthUser = { id: string; role: string; name?: string } | undefined;
 // Estaciones con control estricto (solo entregan escaneando la ficha). La ficha
 // incluye ítems de estas 3 estaciones; cada pantalla filtra por la suya.
 const CONTROLLED_STATIONS = ['BAR', 'KITCHEN', 'PIZZA'];
+
+/** Montos que el servidor deriva de los items (camposDeTotales); el cliente no los escribe. */
+const CAMPOS_DE_DINERO_DEL_SERVIDOR = [
+  'subtotal',
+  'serviceCharge',
+  'servicioIncluido',
+  'noChargeAmount',
+  'discountAmount',
+  'tax',
+  'total',
+  'comisionBase',
+  'tasaServicio',
+  'modoServicio',
+  'tasaIva',
+  'ivaIncluido',
+  'configAplicada',
+] as const;
 
 export interface FichaVariantView {
   variantProductId: string;
@@ -914,6 +937,19 @@ export class OrdersService implements OnApplicationBootstrap {
     await this.assertPendingRefsAreUnique(
       (createOrderDto as any).pendingPayments,
     );
+    // M1 y C2 tambien al crear: montos validos y precio no inferior al catalogo.
+    const errorPagosAlCrear = errorEnPagosPendientes(
+      (createOrderDto as { pendingPayments?: unknown }).pendingPayments,
+    );
+    if (errorPagosAlCrear) throw new BadRequestException(errorPagosAlCrear);
+    // Rebajas tambien al crear: una orden nueva no nace con cortesia ni
+    // descuento (solo se aplican despues, con su accion y PIN admin). Sin esto,
+    // un item con noCharge:true en el alta salia gratis.
+    await this.assertPrecioYRebajasValidos(
+      (createOrderDto.items ?? []) as unknown as Array<Record<string, unknown>>,
+      [],
+      true,
+    );
     // ── El nombre del mesonero lo estampa el SERVIDOR ──
     // 2.292 ordenes historicas quedaron con waiterId y sin waiterName porque
     // dependia de que el cliente lo mandara. Sin el, todo reporte por mesonero
@@ -1390,6 +1426,13 @@ export class OrdersService implements OnApplicationBootstrap {
     const lockReason = (updateOrderDto.editReason ?? '').trim() || null;
     delete (updateOrderDto as any).editReason;
     const patchPayload: any = { ...updateOrderDto, updatedAt: new Date() };
+    // Los montos de la orden los calcula SIEMPRE el servidor desde sus items.
+    // Un PATCH sin items no tiene por que tocarlos: antes {total:0} dejaba en $0
+    // una orden con productos y luego se "cobraba" ese total (auditoria 24/10).
+    if (!updateOrderDto.items) {
+      for (const campo of CAMPOS_DE_DINERO_DEL_SERVIDOR)
+        delete patchPayload[campo];
+    }
     if (patchPayload.items?.length) {
       patchPayload.items = await this.resolveItemNames(patchPayload.items);
 
@@ -1436,6 +1479,13 @@ export class OrdersService implements OnApplicationBootstrap {
       // unitPrice x unidades. Va despues de normalizeItemsMoney para pisar
       // ese calculo en esas lineas.
       patchPayload.items = await this.normalizePackLines(patchPayload.items);
+      // C2: el precio lo pone el servidor, no el cliente. Piso de catálogo y
+      // cortesías/descuentos solo por su acción con PIN.
+      await this.assertPrecioYRebajasValidos(
+        patchPayload.items as Array<Record<string, unknown>>,
+        previousItems ?? [],
+        true,
+      );
 
       // ── Un solo modelo de dinero ──
       // La orden recalcula con SUS tarifas (las que guardó al nacer), no con las
@@ -1475,6 +1525,18 @@ export class OrdersService implements OnApplicationBootstrap {
           );
         if (!cobroQueCubre && totales.total > baseTotal + TOLERANCIA_COBRO) {
           throw new ConflictException(MENSAJE_AGREGAR_A_COBRADA);
+        }
+        // M2: bajar el total de una orden ya cobrada (quitar lo no comandado,
+        // reducir precios). Solo pasa con PIN admin (editAuth, camino 428).
+        // La base es el total de los items previos con las reglas vigentes:
+        // el guardado puede venir de reglas viejas y dar un 409 falso.
+        if (
+          !editAuth &&
+          totales.total < recalculadoAntes.total - TOLERANCIA_COBRO
+        ) {
+          throw new ConflictException(
+            'Este pedido ya está cobrado: no se puede cambiar su total.',
+          );
         }
       }
       totalTras = totales.total;
@@ -1562,22 +1624,11 @@ export class OrdersService implements OnApplicationBootstrap {
       }
     }
 
-    // ── Cobro parcial del mesonero (modelo PREPAGO) ──
-    // Un pago pendiente de verificar debe cubrir el total que quedará tras el PATCH
-    // (USD, sin propina: la propina va aparte en tipAmount).
-    if (
-      patchPayload.paymentStatus === PaymentStatusEnum.PENDING_VERIFICATION &&
-      Array.isArray(patchPayload.pendingPayments)
-    ) {
-      const totalAPagar = totalTras ?? (await this.leerTotalGuardado(id));
-      const pagos = patchPayload.pendingPayments as Array<
-        Record<string, unknown>
-      >;
-      if (!pagosCubrenTotal(pagos, totalAPagar)) {
-        throw new BadRequestException(
-          `El pago no cubre el total: faltan $${faltaParaCubrir(pagos, totalAPagar).toFixed(2)}.`,
-        );
-      }
+    // ── Guarda de cobro por ESTADO RESULTANTE (modelo PREPAGO, C1 y M1) ──
+    // Se mira lo que quedará guardado tras el PATCH, no solo lo que el cliente
+    // dice en paymentStatus: sin esto, {paymentStatus:'paid'} salta la verificación.
+    if (this.tocaCobro(updateOrderDto)) {
+      await this.assertCobroCoherente(id, updateOrderDto, totalTras, user);
     }
 
     const order = await this.orderModel
@@ -1846,6 +1897,17 @@ export class OrdersService implements OnApplicationBootstrap {
     if (!order) {
       throw new NotFoundException(`Order with ID ${id} not found`);
     }
+    // Mismas guardas que el PATCH: un producto nuevo en una orden ya cobrada
+    // no tiene cobro, y su precio no puede ser menor al del catalogo ni nacer
+    // con cortesia/descuento (eso va por su accion con PIN).
+    if (ordenEstaCobrada(order.paymentStatus, order.status)) {
+      throw new ConflictException(MENSAJE_AGREGAR_A_COBRADA);
+    }
+    await this.assertPrecioYRebajasValidos(
+      [addItemDto as unknown as Record<string, unknown>],
+      [],
+      true,
+    );
 
     // Normalizar dinero del item entrante (total = unitPrice × quantity)
     const [normalizedItem] = normalizeItemsMoney([
@@ -2147,6 +2209,178 @@ export class OrdersService implements OnApplicationBootstrap {
     return this.configs.obtenerCrudo('packs', (doc) =>
       normalizarRegistroPacks(doc?.valor),
     );
+  }
+
+  /** ¿El PATCH toca algo del cobro (estado, pagos o total)? */
+  private tocaCobro(dto: UpdateOrderDto): boolean {
+    const d = dto as {
+      paymentStatus?: unknown;
+      status?: unknown;
+      pendingPayments?: unknown;
+    };
+    return (
+      d.paymentStatus !== undefined ||
+      d.status !== undefined ||
+      d.pendingPayments !== undefined
+    );
+  }
+
+  /**
+   * Guarda de cobro sobre el estado RESULTANTE del PATCH (C1, M1):
+   * - pending_verification: los pagos (del PATCH, o los guardados si no vienen)
+   *   deben cubrir el total resultante.
+   * - paid / PAID por PATCH: los documentos Payment deben cubrir el total. La
+   *   caja crea cada Payment antes del PATCH (CashierPaymentScreen y web). Como
+   *   excepción, se acepta lo que el mesonero declaró (pendingPayments
+   *   guardados) solo si lo marca un rol que no sea mesonero: es la verificación
+   *   de caja de lo declarado, y el mesonero no puede cerrar su propia cuenta.
+   * - partial por PATCH: exige algún pago (Payment o pendingPayments).
+   */
+  private async assertCobroCoherente(
+    id: string,
+    dto: UpdateOrderDto,
+    totalTras: number | null,
+    user: AuthUser,
+  ): Promise<void> {
+    const d = dto as {
+      paymentStatus?: string;
+      status?: string;
+      pendingPayments?: unknown;
+    };
+    const errorPagos = errorEnPagosPendientes(d.pendingPayments);
+    if (errorPagos) throw new BadRequestException(errorPagos);
+
+    const base = (await this.orderModel
+      .findOne(
+        { _id: id },
+        { paymentStatus: 1, status: 1, pendingPayments: 1, total: 1 },
+      )
+      .lean()
+      .exec()) as {
+      paymentStatus?: string;
+      status?: string;
+      pendingPayments?: unknown;
+      total?: unknown;
+    } | null;
+    const guardados = Array.isArray(base?.pendingPayments)
+      ? (base.pendingPayments as Array<Record<string, unknown>>)
+      : [];
+    const pagos = Array.isArray(d.pendingPayments)
+      ? (d.pendingPayments as Array<Record<string, unknown>>)
+      : d.pendingPayments === undefined
+        ? guardados
+        : [];
+    const total = totalTras ?? (Number(base?.total) || 0);
+    const psResultante = d.paymentStatus ?? base?.paymentStatus;
+
+    if (psResultante === PaymentStatusEnum.PENDING_VERIFICATION) {
+      if (!pagosCubrenTotal(pagos, total)) {
+        throw new BadRequestException(
+          `El pago no cubre el total: faltan $${faltaParaCubrir(pagos, total).toFixed(2)}.`,
+        );
+      }
+    }
+
+    const pideCerrar =
+      d.paymentStatus === PaymentStatusEnum.PAID ||
+      d.status === OrderStatusEnum.PAID;
+    if (pideCerrar && total > TOLERANCIA_COBRO) {
+      const registrado = await this.sumaDePagosRegistrados(id);
+      if (!pagosCubrenTotal([{ amount: registrado }], total)) {
+        const cajaLoVerifica =
+          user !== undefined && String(user.role).toLowerCase() !== 'waiter';
+        if (!(cajaLoVerifica && pagosCubrenTotal(guardados, total))) {
+          throw new BadRequestException(
+            `La orden no tiene cobro registrado que cubra el total: faltan $${faltaParaCubrir([{ amount: registrado }], total).toFixed(2)}.`,
+          );
+        }
+      }
+    }
+
+    if (d.paymentStatus === PaymentStatusEnum.PARTIAL) {
+      const cobrado =
+        (await this.sumaDePagosRegistrados(id)) + sumaPagosPendientes(pagos);
+      if (cobrado <= TOLERANCIA_COBRO) {
+        throw new BadRequestException(
+          'Un cobro parcial necesita al menos un pago registrado.',
+        );
+      }
+    }
+  }
+
+  /** Suma en USD de los documentos Payment vigentes (no anulados) de la orden. */
+  private async sumaDePagosRegistrados(orderId: string): Promise<number> {
+    const pagos = (await this.paymentModel
+      .find({ orderId }, { amount: 1, status: 1 })
+      .lean()
+      .exec()) as Array<Record<string, unknown>>;
+    return sumaPagosPendientes(pagos.filter((p) => pagoVigente(p)));
+  }
+
+  /**
+   * C2: ningún unitPrice por debajo del piso de catálogo. Con `validarRebajas`
+   * (solo PATCH) tambien impide introducir o cambiar cortesías y descuentos.
+   */
+  private async assertPrecioYRebajasValidos(
+    items: Array<Record<string, unknown>>,
+    base: Array<Record<string, unknown>>,
+    validarRebajas: boolean,
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const pisos = await this.pisosDeCatalogo(items);
+    const bajo = primerPrecioBajo(items, pisos, base);
+    if (bajo) {
+      throw new BadRequestException(`Precio inválido para ${bajo}`);
+    }
+    if (validarRebajas) {
+      const rebaja = cambioDeRebaja(items, base);
+      if (rebaja) {
+        throw new BadRequestException(
+          `La cortesía o el descuento de ${rebaja} solo se cambian con su acción y PIN admin.`,
+        );
+      }
+    }
+  }
+
+  /** Piso por unidad de cada producto de los items, en una sola consulta. */
+  private async pisosDeCatalogo(
+    items: Array<Record<string, unknown>>,
+  ): Promise<Map<string, PisoDeLinea>> {
+    const ids = [
+      ...new Set(items.map((it) => String(it.productId ?? '')).filter(Boolean)),
+    ];
+    const pisos = new Map<string, PisoDeLinea>();
+    if (ids.length === 0) return pisos;
+    const productos = (await this.productModel
+      .find({ _id: { $in: ids } }, { price: 1, name: 1, stationParts: 1 })
+      .lean()
+      .exec()) as unknown as Array<{
+      _id: unknown;
+      price?: number;
+      name?: string;
+      stationParts?: unknown[];
+    }>;
+    const porId = new Map(productos.map((p) => [String(p._id), p]));
+    const registro = await this.registroDePacks();
+    for (const id of ids) {
+      const producto = porId.get(id);
+      if (!producto) {
+        this.logger.warn(
+          `[precio] el producto ${id} no está en el catálogo: su precio no se revisa`,
+        );
+        continue;
+      }
+      const precio = Number(producto.price ?? 0);
+      const pack = getPackConfig(registro, id);
+      pisos.set(id, {
+        nombre: String(producto.name ?? id),
+        piso: pack ? precio / pack.totalUnits : precio,
+        combo:
+          Array.isArray(producto.stationParts) &&
+          producto.stationParts.length >= 2,
+      });
+    }
+    return pisos;
   }
 
   private async normalizePackLines(
@@ -4036,6 +4270,15 @@ export class OrdersService implements OnApplicationBootstrap {
     if (!order) {
       throw new NotFoundException(`Order with ID ${id} not found`);
     }
+    // A2: una cuenta a crédito conserva paymentStatus 'pending' y no es un borrador.
+    if (
+      order.status === OrderStatusEnum.CREDIT ||
+      order.status === OrderStatusEnum.PAID
+    ) {
+      throw new ConflictException(
+        'La orden ya es una cuenta a crédito o está pagada: no se puede descartar.',
+      );
+    }
     const estadoDePago = String(order.paymentStatus ?? '').toLowerCase();
     const items = (order.items ?? []) as Array<Record<string, unknown>>;
     const algoSalio = items.some(
@@ -4063,7 +4306,49 @@ export class OrdersService implements OnApplicationBootstrap {
         'La orden ya tiene cobro o productos despachados: no se puede descartar.',
       );
     }
-    return this.remove(id, user);
+    // A1: el borrado repite las condiciones en el filtro. Si entre la lectura y
+    // este punto alguien cobró o despachó, el filtro no casa y no se borra nada.
+    // paidAmount se reserva ANTES de crear el Payment (reservarCupo), así que
+    // cubre la carrera de un cobro en vuelo que aun no cambió paymentStatus.
+    const borrado = await this.orderModel.deleteOne({
+      _id: id,
+      status: { $nin: [OrderStatusEnum.PAID, OrderStatusEnum.CREDIT] },
+      paymentStatus: { $in: [null, '', PaymentStatusEnum.PENDING] },
+      paidAmount: { $in: [null, 0] },
+      $or: [
+        { pendingPayments: { $exists: false } },
+        { pendingPayments: null },
+        { pendingPayments: { $size: 0 } },
+      ],
+    });
+    if (borrado.deletedCount !== 1) {
+      throw new ConflictException(
+        'La orden cambió mientras se descartaba (ya tiene cobro o productos despachados): no se puede descartar.',
+      );
+    }
+    // Solo tras borrar con éxito se libera la mesa. Un borrador no tiene
+    // inventario movido (lo verificado arriba), así que no hay nada que reponer.
+    if (order.tableId) {
+      const updatedTable = await this.tableModel
+        .findOneAndUpdate(
+          { _id: order.tableId },
+          {
+            status: TableStatusEnum.ISAVAILABLE,
+            isAvailable: true,
+            orderId: null,
+          },
+          { new: true },
+        )
+        .lean();
+      if (updatedTable) {
+        this.posGateway.notifyTableUpdated({
+          ...updatedTable,
+          id: updatedTable._id,
+        });
+      }
+    }
+    this.posGateway.notifyOrderDeleted(id);
+    return { message: 'Order deleted successfully' };
   }
 
   async findPendingVerification() {

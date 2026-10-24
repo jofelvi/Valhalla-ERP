@@ -101,11 +101,11 @@ export class CustomersController {
     return this.customersService.findByMemberAction(action);
   }
 
-  // Sin @Roles a proposito: el cliente ve SU PROPIA ficha (mismo _id que su
-  // `users`, ver AuthService.ensureCustomerRecord) desde la app movil. Se
-  // valida a mano que sea su propio id o que sea staff, en vez de bloquear
-  // todo el endpoint como en el resto del controller.
+  // El cliente ve y edita SU PROPIA ficha (mismo _id que su `users`, ver
+  // AuthService.ensureCustomerRecord). El staff ve cualquiera. La regla fina
+  // (dueno o staff) se valida en assertSelfOrStaff.
   @Get(':id')
+  @Roles(...STAFF_ROLES, UserRoleEnum.CUSTOMER)
   @ApiOperation({ summary: 'Get customer by ID (propio perfil o staff)' })
   @ApiResponse({ status: 200, description: 'Customer retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
@@ -116,33 +116,43 @@ export class CustomersController {
   }
 
   /**
-   * Igual que RolesGuard: durante la transicion, sin usuario resuelto se
-   * deja pasar (auditoria, no bloqueo — ver JwtAuthGuard). Con usuario, solo
-   * pasa el dueno de la ficha o alguien de staff.
+   * Sin usuario resuelto se rechaza: no depende del interruptor de lecturas
+   * (AUTH_ENFORCE_READS), porque aqui se expone la ficha de una persona. Con
+   * usuario, solo pasa el dueno de la ficha o alguien de staff.
    */
   private assertSelfOrStaff(id: string, req: AuthedRequest): void {
     const user = req.user;
-    if (!user) return;
+    if (!user) throw new ForbiddenException('Sesion requerida');
     if (user.id === id) return;
     if (STAFF_ROLES.includes(user.role as UserRoleEnum)) return;
     throw new ForbiddenException('No autorizado para ver este cliente');
   }
 
+  // Alta de fichas: solo staff (CustomerSelectModal al crear un cliente). El
+  // registro del cliente no pasa por aqui: la ficha se crea en el servidor.
   @Post()
-  @ApiOperation({ summary: 'Create new customer' })
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: 'Create new customer (staff)' })
   @ApiResponse({ status: 201, description: 'Customer created successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   async create(@Body() createCustomerDto: CreateCustomerDto) {
     return this.customersService.create(createCustomerDto);
   }
 
+  // Edicion: staff edita cualquier ficha; el cliente solo la suya (el
+  // registro en la app actualiza su propia ficha, RegisterStep1-5 y perfil).
   @Patch(':id')
-  @ApiOperation({ summary: 'Update customer' })
+  @Roles(...STAFF_ROLES, UserRoleEnum.CUSTOMER)
+  @ApiOperation({ summary: 'Update customer (propia ficha o staff)' })
   @ApiResponse({ status: 200, description: 'Customer updated successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Customer not found' })
   async update(
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
+    @Request() req: AuthedRequest,
   ) {
+    this.assertSelfOrStaff(id, req);
     return this.customersService.update(id, updateCustomerDto);
   }
 

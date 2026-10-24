@@ -220,7 +220,9 @@ describe('OrdersService.update — un solo modelo de dinero', () => {
     expect(t.total).toBe(26.4);
   });
 
-  it('un PATCH no vuelve a cobrar una cortesia', async () => {
+  it('un PATCH no puede introducir una cortesia (solo su accion con PIN)', async () => {
+    // C2: la cortesia se marca con /no-charge y PIN admin. Un PATCH generico
+    // que trae una linea con noCharge:true nueva se rechaza y no se guarda.
     const items: ItemPrueba[] = [
       ...itemsConDescuento(),
       {
@@ -234,18 +236,10 @@ describe('OrdersService.update — un solo modelo de dinero', () => {
       },
     ];
 
-    await service.update(orderId, { items } as never, usuario as never);
-
-    const t = totales();
-    expect(t.subtotal).toBe(31); // la cortesia entra a precio pleno
-    expect(t.noChargeAmount).toBe(6);
-    expect(t.discountAmount).toBe(4);
-    // La cortesia NO baja la base del servicio (lo que paga el cliente); el
-    // descuento SI.
-    expect(t.serviceCharge).toBe(2.7); // (31 - 4) * 10%
-    expect(t.total).toBe(23.7); // 31 + 2.70 - 6 - 4
-    // Pero la comision del mesonero SI excluye la cortesia: (31 - 6 - 4) * 10%.
-    expect(t.comisionBase).toBe(21);
+    await expect(
+      service.update(orderId, { items } as never, usuario as never),
+    ).rejects.toThrow('solo se cambian con su acción y PIN admin');
+    expect(guardado).toEqual({});
   });
 
   it('subir la cantidad de una linea respeta el descuento de otra', async () => {

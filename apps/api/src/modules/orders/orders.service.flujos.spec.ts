@@ -400,6 +400,67 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
   });
 
   // ─── descartarSinCobrar: "atras" en la pantalla de cobro ─────────────
+  // ─── addItem (POST /:id/items): mismas guardas de dinero que el PATCH ──
+  describe('addItem', () => {
+    const ordenDoc = (over: Record<string, unknown> = {}) => ({
+      _id: 'orden-1',
+      waiterId: 'w-1',
+      status: 'PENDING',
+      paymentStatus: 'pending',
+      items: [],
+      save: jest.fn(),
+      ...over,
+    });
+    const ponerCatalogo = (price: number) => {
+      (
+        service as unknown as { productModel: { find: jest.Mock } }
+      ).productModel.find.mockReturnValue(
+        consulta([{ _id: 'p1', price, name: 'Buchanans' }]),
+      );
+    };
+    const item = (over: Record<string, unknown> = {}) =>
+      ({
+        productId: 'p1',
+        name: 'Buchanans',
+        quantity: 1,
+        unitPrice: 70,
+        ...over,
+      }) as never;
+
+    it('no agrega productos a una orden ya cobrada (409)', async () => {
+      const doc = ordenDoc({ paymentStatus: 'pending_verification' });
+      orderModel.findOne.mockReturnValue(consulta(doc));
+      ponerCatalogo(70);
+
+      await expect(
+        service.addItem('orden-1', item(), mesonero),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(doc.save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un precio menor al del catalogo (400)', async () => {
+      const doc = ordenDoc();
+      orderModel.findOne.mockReturnValue(consulta(doc));
+      ponerCatalogo(70);
+
+      await expect(
+        service.addItem('orden-1', item({ unitPrice: 0.01 }), mesonero),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(doc.save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un producto nuevo que llega como cortesia (400)', async () => {
+      const doc = ordenDoc();
+      orderModel.findOne.mockReturnValue(consulta(doc));
+      ponerCatalogo(70);
+
+      await expect(
+        service.addItem('orden-1', item({ noCharge: true }), mesonero),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(doc.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('descartarSinCobrar', () => {
     const borrador = {
       _id: 'orden-1',
@@ -419,7 +480,47 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
         MESA_LIBRE,
         { new: true },
       );
-      expect(orderModel.deleteOne).toHaveBeenCalledWith({ _id: 'orden-1' });
+      // A1: el borrado es atomico; el filtro repite las condiciones del borrador.
+      expect(orderModel.deleteOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _id: 'orden-1',
+          paidAmount: { $in: [null, 0] },
+        }),
+      );
+    });
+
+    it('409 y la mesa NO se libera si el borrado no casa (deletedCount 0)', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta({
+          _id: 'orden-1',
+          waiterId: 'w-1',
+          status: 'PENDING',
+          paymentStatus: 'pending',
+          items: [],
+          tableId: 'mesa-1',
+        }),
+      );
+      orderModel.deleteOne.mockResolvedValueOnce({ deletedCount: 0 });
+      await expect(
+        service.descartarSinCobrar('orden-1', mesonero),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tableModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('409 si la orden es una cuenta a crédito (status CREDIT)', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta({
+          _id: 'orden-1',
+          waiterId: 'w-1',
+          status: 'CREDIT',
+          paymentStatus: 'pending',
+          items: [],
+        }),
+      );
+      await expect(
+        service.descartarSinCobrar('orden-1', mesonero),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(orderModel.deleteOne).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -891,6 +992,251 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
           admin,
         ),
       ).resolves.toBeDefined();
+    });
+  });
+
+  // ─── Guardas de dinero del PATCH: cobro (C1, M1), piso de precio (C2), total cobrado (M2) ───
+  describe('guardas de dinero del PATCH', () => {
+    const ID = 'orden-1';
+    const ITEM = (
+      qty: number,
+      unit: number,
+      extra: Record<string, unknown> = {},
+    ) => ({
+      _id: 'l1',
+      productId: 'p1',
+      name: 'Tequeño',
+      quantity: qty,
+      unitPrice: unit,
+      total: qty * unit,
+      sentQty: qty,
+      ...extra,
+    });
+    const ordenBase = (over: Record<string, unknown> = {}) => ({
+      _id: ID,
+      waiterId: 'w-1',
+      status: 'PENDING',
+      paymentStatus: 'pending',
+      total: 20,
+      items: [ITEM(2, 10)],
+      pendingPayments: [],
+      ...over,
+    });
+    const ponerCatalogo = (price: number) => {
+      (
+        service as unknown as { productModel: { find: jest.Mock } }
+      ).productModel.find.mockReturnValue(
+        consulta([{ _id: 'p1', price, name: 'Tequeño' }]),
+      );
+    };
+    /** Un PATCH que pasa las guardas puede fallar despues por otros mocks: solo importa que no sea 400/409. */
+    const sinRechazoDeDinero = async (p: Promise<unknown>) => {
+      try {
+        await p;
+      } catch (e) {
+        expect(e).not.toBeInstanceOf(BadRequestException);
+        expect(e).not.toBeInstanceOf(ConflictException);
+      }
+    };
+
+    beforeEach(() => {
+      ponerCatalogo(10);
+      paymentModel.find = jest.fn().mockReturnValue(consulta([]));
+      orderModel.findOne.mockReturnValue(consulta(ordenBase()));
+      orderModel.findOneAndUpdate.mockReturnValue(consulta(ordenBase()));
+    });
+
+    it('un PATCH sin items no escribe montos: {total:0} se ignora', async () => {
+      await sinRechazoDeDinero(
+        service.update(
+          ID,
+          { total: 0, subtotal: 0, serviceCharge: 0, notes: 'x' } as never,
+          mesonero,
+        ),
+      );
+      for (const [, payload] of orderModel.findOneAndUpdate.mock.calls) {
+        const p = payload as Record<string, unknown>;
+        expect(p).not.toHaveProperty('total');
+        expect(p).not.toHaveProperty('subtotal');
+        expect(p).not.toHaveProperty('serviceCharge');
+      }
+    });
+
+    it('C1: paymentStatus "paid" sin Payment que cubra el total → 400', async () => {
+      await expect(
+        service.update(ID, { paymentStatus: 'paid' } as never, admin),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('C1: paymentStatus "partial" sin ningun pago → 400', async () => {
+      await expect(
+        service.update(ID, { paymentStatus: 'partial' } as never, admin),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('C1: pending_verification con pendingPayments null → 400', async () => {
+      await expect(
+        service.update(
+          ID,
+          {
+            paymentStatus: 'pending_verification',
+            pendingPayments: null,
+          } as never,
+          mesonero,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('C1: el cajero cobra con Payments que cubren el total y marca paid → pasa', async () => {
+      paymentModel.find = jest
+        .fn()
+        .mockReturnValue(consulta([{ amount: 20, status: 'paid' }]));
+      await sinRechazoDeDinero(
+        service.update(
+          ID,
+          {
+            paymentStatus: 'paid',
+            status: 'PAID',
+            pendingPayments: null,
+          } as never,
+          admin,
+        ),
+      );
+    });
+
+    it('C1: un Payment anulado no cuenta para cubrir el total → 400', async () => {
+      paymentModel.find = jest
+        .fn()
+        .mockReturnValue(consulta([{ amount: 20, status: 'anulado' }]));
+      await expect(
+        service.update(ID, { paymentStatus: 'paid' } as never, admin),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('verificacion de caja: pending_verification que cubre → pasa', async () => {
+      await sinRechazoDeDinero(
+        service.update(
+          ID,
+          {
+            paymentStatus: 'pending_verification',
+            pendingPayments: [{ method: 'CASH_USD', amount: 20 }],
+          } as never,
+          mesonero,
+        ),
+      );
+    });
+
+    it('verificacion de caja: paid que confirma lo declarado pasa a caja, no al mesonero', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta(
+          ordenBase({ pendingPayments: [{ method: 'CASH_USD', amount: 20 }] }),
+        ),
+      );
+      await sinRechazoDeDinero(
+        service.update(ID, { paymentStatus: 'paid' } as never, admin),
+      );
+      await expect(
+        service.update(ID, { paymentStatus: 'paid' } as never, mesonero),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('M1: amount negativo que "cubre" el total → 400', async () => {
+      await expect(
+        service.update(
+          ID,
+          {
+            paymentStatus: 'pending_verification',
+            pendingPayments: [
+              { method: 'CASH_USD', amount: 100 },
+              { method: 'CASH_USD', amount: -90 },
+            ],
+          } as never,
+          mesonero,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('M1: amount no numerico → 400', async () => {
+      await expect(
+        service.update(
+          ID,
+          {
+            paymentStatus: 'pending_verification',
+            pendingPayments: [{ method: 'CASH_USD', amount: 'abc' }],
+          } as never,
+          mesonero,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('C2: unitPrice por debajo del catalogo → 400 "Precio invalido"', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenBase({ items: [] })));
+      await expect(
+        service.update(ID, { items: [ITEM(1, 2)] } as never, admin),
+      ).rejects.toThrow('Precio inválido para Tequeño');
+    });
+
+    it('C2: unitPrice igual al catalogo → pasa', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenBase({ items: [] })));
+      await sinRechazoDeDinero(
+        service.update(ID, { items: [ITEM(1, 10)] } as never, admin),
+      );
+    });
+
+    it('C2: item existente con descuento guardado reenviado igual → pasa', async () => {
+      const conDescuento = [
+        ITEM(2, 10, { discountAmount: 2, discountReason: 'socio' }),
+      ];
+      orderModel.findOne.mockReturnValue(
+        consulta(ordenBase({ items: conDescuento })),
+      );
+      await sinRechazoDeDinero(
+        service.update(ID, { items: conDescuento } as never, admin),
+      );
+    });
+
+    it('C2: un PATCH que introduce un descuento → 400', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta(ordenBase({ items: [ITEM(2, 10)] })),
+      );
+      await expect(
+        service.update(
+          ID,
+          { items: [ITEM(2, 10, { discountAmount: 5 })] } as never,
+          admin,
+        ),
+      ).rejects.toThrow('solo se cambian con su acción y PIN admin');
+    });
+
+    it('M2: bajar el total de una orden ya cobrada → 409', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta(
+          ordenBase({
+            paymentStatus: 'paid',
+            status: 'PAID',
+            total: 20,
+            items: [ITEM(2, 10, { sentQty: 0 })],
+          }),
+        ),
+      );
+      await expect(
+        service.update(
+          ID,
+          { items: [ITEM(1, 10, { sentQty: 0 })] } as never,
+          admin,
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('M2: entrega que reenvia los mismos items de una orden cobrada → pasa', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta(
+          ordenBase({ paymentStatus: 'paid', status: 'PAID', total: 20 }),
+        ),
+      );
+      await sinRechazoDeDinero(
+        service.update(ID, { items: [ITEM(2, 10)] } as never, admin),
+      );
     });
   });
 });

@@ -15,7 +15,7 @@
  */
 import { Test } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
-import { Logger } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { Order } from './schemas/order.schema';
 import { Table } from '../tables/schemas/table.schema';
@@ -85,7 +85,10 @@ describe('OrdersService.create — servidor fija los totales', () => {
           provide: getModelToken('Product'),
           useValue: {
             find: jest.fn().mockReturnValue({
-              lean: () => ({ exec: () => Promise.resolve([]) }),
+              lean: () => ({
+                exec: () =>
+                  Promise.resolve([{ _id: 'p1', price: 10, name: 'Tequeños' }]),
+              }),
             }),
           },
         },
@@ -150,7 +153,7 @@ describe('OrdersService.create — servidor fija los totales', () => {
     expect(creado.serviceCharge).toBe(1.03);
   });
 
-  it('(b) Descuento + cortesía → totales del servidor, no del cliente', async () => {
+  it('(b) Una orden nueva no nace con descuento ni cortesía (eso va con su acción y PIN)', async () => {
     const dto = {
       userId: 'u-1',
       waiterId: 'w-1',
@@ -164,32 +167,26 @@ describe('OrdersService.create — servidor fija los totales', () => {
           name: 'Item 1',
         },
         {
-          productId: 'p2',
+          productId: 'p1',
           quantity: 1,
-          unitPrice: 6,
-          total: 6,
+          unitPrice: 10,
+          total: 10,
           noCharge: true,
           name: 'Cortesía',
         },
       ],
-      subtotal: 26,
-      total: 28.6, // Cliente manda algo
-      serviceCharge: 2.6,
+      subtotal: 30,
+      total: 33,
+      serviceCharge: 3,
     };
 
-    await service.create(dto as never, undefined);
-
-    // Calculado: subtotal=26, noCharge=6, discount=4
-    // serviceCharge = (26 - 4) * 0.1 = 2.2
-    // total = 26 + 2.2 - 6 - 4 = 18.2
-    expect(creado.subtotal).toBe(26);
-    expect(creado.noChargeAmount).toBe(6);
-    expect(creado.discountAmount).toBe(4);
-    expect(creado.serviceCharge).toBe(2.2);
-    expect(creado.total).toBe(18.2);
+    await expect(
+      service.create(dto as never, undefined),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(creado).toEqual({});
   });
 
-  it('(c) Orden SIN servicio (zona) → serviceCharge 0 y total == subtotal − descuentos', async () => {
+  it('(c) Orden SIN servicio (zona) → serviceCharge 0 y total == subtotal', async () => {
     const dto = {
       userId: 'u-1',
       items: [
@@ -198,19 +195,18 @@ describe('OrdersService.create — servidor fija los totales', () => {
           quantity: 2,
           unitPrice: 10,
           total: 20,
-          discountAmount: 4,
           name: 'Item',
         },
       ],
       subtotal: 20,
-      total: 16,
+      total: 20,
       // Sin serviceCharge en DTO (zona)
     };
 
     await service.create(dto as never, undefined);
 
     expect(creado.serviceCharge).toBe(0);
-    expect(creado.total).toBe(16); // 20 - 4
+    expect(creado.total).toBe(20);
   });
 
   it('(d) WARN cuando cliente difiere > 0.01', async () => {
