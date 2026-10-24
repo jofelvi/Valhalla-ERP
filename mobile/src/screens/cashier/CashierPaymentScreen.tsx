@@ -342,7 +342,7 @@ export const CashierPaymentScreen: React.FC = () => {
       showAlert(
         'Cuenta Pendiente',
         `Orden #${order.id.slice(-6).toUpperCase()} registrada como cuenta por cobrar.`,
-        [{ text: 'OK', onPress: () => navigation.navigate('CashierTabs') }],
+        [{ text: 'OK', onPress: () => navigation.popToTop() }],
       );
     } catch (error) {
       console.error('Error creando cuenta pendiente:', error);
@@ -518,7 +518,7 @@ export const CashierPaymentScreen: React.FC = () => {
       showAlert(
         'Cobro Exitoso',
         `Orden #${order.id.slice(-6).toUpperCase()} cobrada correctamente.${changeUsd > 0.01 ? `\nCambio: $${changeUsd.toFixed(2)}` : ''}`,
-        [{ text: 'OK', onPress: () => navigation.navigate('CashierTabs') }],
+        [{ text: 'OK', onPress: () => navigation.popToTop() }],
       );
     } catch (error) {
       console.error('Error procesando cobro:', error);

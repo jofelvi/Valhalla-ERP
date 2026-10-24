@@ -637,7 +637,10 @@ export const WaiterPaymentScreen: React.FC = () => {
       // Navegacion directa: Alert.alert con onPress es inconsistente en web
       // (RNW no garantiza que el callback se dispare). El feedback visual viene
       // del badge "En verificacion" en la lista de pedidos.
-      navigation.navigate('WaiterTabs');
+      // popToTop y no navigate('WaiterTabs'): el admin tambien cobra desde aqui y su
+      // inicio es AdminTabs; navegar a la ruta de otro rol no hace nada y la pantalla
+      // se quedaba en "subiendo" con el cobro ya guardado.
+      navigation.popToTop();
     } catch (error) {
       console.error('[WaiterPayment] Error registrando cobro:', error);
       setIsUploading(false);
