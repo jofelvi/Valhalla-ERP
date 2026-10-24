@@ -102,8 +102,31 @@ export interface PisoDeLinea {
   nombre: string;
   /** Precio mínimo por unidad: products.price, o price / unidades del pack. */
   piso: number;
+  /** Precio de catálogo completo (el del paquete, si se vende por paquete). */
+  precio?: number;
   /** Producto multi-estación (combo): sus partes llegan con unitPrice 0. */
   combo: boolean;
+}
+
+/**
+ * Piso por unidad de UNA línea. Un paquete (tequeños x12, tobo) llega expandido: quantity en
+ * unidades, unitPrice = precio / presentationQty. Se acepta ese reparto solo si la línea trae
+ * paquetes enteros: así lo cobrado es siempre precio x paquetes, declare el tamaño que declare.
+ */
+function pisoDeLaLinea(it: Record<string, unknown>, piso: PisoDeLinea): number {
+  const tamano = Number(it.presentationQty);
+  const cantidad = Number(it.quantity);
+  if (
+    piso.precio === undefined ||
+    !Number.isFinite(tamano) ||
+    tamano <= 0 ||
+    !Number.isFinite(cantidad) ||
+    cantidad <= 0 ||
+    !Number.isInteger(cantidad / tamano)
+  ) {
+    return piso.piso;
+  }
+  return Math.min(piso.piso, piso.precio / tamano);
 }
 
 /**
@@ -147,7 +170,8 @@ export function primerPrecioBajo(
       continue;
     }
     if (piso.combo && unitario === 0 && conPrecio.has(id)) continue;
-    if (unitario + TOLERANCIA_COBRO < piso.piso) return piso.nombre;
+    if (unitario + TOLERANCIA_COBRO < pisoDeLaLinea(it, piso))
+      return piso.nombre;
   }
   return null;
 }

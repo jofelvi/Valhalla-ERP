@@ -2375,6 +2375,7 @@ export class OrdersService implements OnApplicationBootstrap {
       pisos.set(id, {
         nombre: String(producto.name ?? id),
         piso: pack ? precio / pack.totalUnits : precio,
+        precio,
         combo:
           Array.isArray(producto.stationParts) &&
           producto.stationParts.length >= 2,
