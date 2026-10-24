@@ -25,6 +25,11 @@ import { useModal } from '../../hooks/useModal';
 import { useTarifas } from '../../config/hooks';
 import { pctTexto } from '../../config/totalesDeOrden';
 import { tarifasDeOrden } from '../../config/tarifasDeOrden';
+import { COMANDA_AL_PAGAR } from '../../config/funciones';
+import {
+  avisoNoAgregarProductos,
+  motivoNoAgregarProductos,
+} from '../../services/pedidoAgregarProductos';
 import {
   COLORS,
   SPACING,
@@ -186,11 +191,30 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
     !!user?.uid &&
     (order.userId === user.uid || order.waiterId === user.uid);
 
-  const canAddItems =
+  const puedeAgregarPorEstado =
     order !== null &&
     (order.status === OrderStatusEnum.PENDING ||
       order.status === OrderStatusEnum.IN_PROGRESS) &&
     ((isWaiter && isOrderOwnedByMe) || isCashier);
+
+  // Con prepago, un pedido cobrado o con pago rechazado no recibe productos nuevos.
+  const motivoNoAgregar = order
+    ? motivoNoAgregarProductos(
+        {
+          paymentStatus: order.paymentStatus,
+          paymentRejected: order.paymentRejected,
+        },
+        COMANDA_AL_PAGAR,
+      )
+    : null;
+
+  const canAddItems = puedeAgregarPorEstado && motivoNoAgregar === null;
+
+  // Aviso en lugar del botón "Agregar productos" para quien sí podría agregar.
+  const avisoAgregar =
+    puedeAgregarPorEstado && motivoNoAgregar !== null
+      ? avisoNoAgregarProductos(motivoNoAgregar)
+      : null;
 
   const canManageDelivery =
     isWaiter &&
@@ -839,6 +863,17 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
               );
             })}
           </Card>
+
+          {avisoAgregar && (
+            <View style={styles.avisoAgregar}>
+              <Ionicons
+                name="information-circle-outline"
+                size={18}
+                color={COLORS.textSecondary}
+              />
+              <Text style={styles.avisoAgregarTexto}>{avisoAgregar}</Text>
+            </View>
+          )}
 
           {/* Boton agregar productos - solo mesoneros con pedido activo */}
           {canAddItems && (
@@ -2028,6 +2063,22 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     fontWeight: FONT_WEIGHT.semibold,
     color: COLORS.success,
+  },
+  avisoAgregar: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  avisoAgregarTexto: {
+    flex: 1,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
   },
   addItemsButton: {
     marginTop: SPACING.md,

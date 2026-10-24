@@ -58,10 +58,8 @@ import { tarifasDeOrden } from '../../config/tarifasDeOrden';
 import { showAlert } from '../../utils/alert';
 import { useDescartarSinCobrar } from '../../hooks/useDescartarSinCobrar';
 import { COMANDA_AL_PAGAR, CREDITO_HABILITADO } from '../../config/funciones';
-import {
-  enviarComandaDeOrden,
-  pedidoCobrado,
-} from '../../services/comandaAlPagar';
+import { enviarComandaDeOrden } from '../../services/comandaAlPagar';
+import { comandaYaSalio } from '../../services/pedidoCobrado';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'CashierPayment'>;
@@ -278,7 +276,8 @@ export const CashierPaymentScreen: React.FC = () => {
     if (!order || !user) return;
     setIsProcessing(true);
     // Estado previo a este cobro: la comanda al cobrar sale una sola vez por orden.
-    const yaCobrada = pedidoCobrado(order.paymentStatus);
+    // Un pago rechazado ya tuvo su comanda: no se reimprime al recobrar.
+    const yaCobrada = comandaYaSalio(order);
 
     try {
       // 1. Crear cuenta por cobrar en el backend
@@ -356,7 +355,8 @@ export const CashierPaymentScreen: React.FC = () => {
     if (!order || !user) return;
     setIsProcessing(true);
     // Estado previo a este cobro: la comanda al cobrar sale una sola vez por orden.
-    const yaCobrada = pedidoCobrado(order.paymentStatus);
+    // Un pago rechazado ya tuvo su comanda: no se reimprime al recobrar.
+    const yaCobrada = comandaYaSalio(order);
 
     try {
       const validEntries = paymentEntries.filter(
@@ -448,6 +448,11 @@ export const CashierPaymentScreen: React.FC = () => {
         paymentMethod,
         bcvRate,
         pendingPayments: null,
+        // Si la orden venia rechazada, el cobro de caja la deja saldada: sin
+        // limpiar el flag seguiria viendose "Pago rechazado" y oculta en caja.
+        paymentRejected: false,
+        paymentRejectionReason: null,
+        paymentRejectedAt: null,
       });
       // El cobro quedo registrado: salir de aqui ya no descarta el pedido.
       marcarCobrado();

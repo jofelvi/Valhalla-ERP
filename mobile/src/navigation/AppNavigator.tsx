@@ -569,6 +569,12 @@ const CashierStackNavigator: React.FC = () => {
         component={WaiterCreateOrderScreen}
         options={{ title: 'Agregar Productos' }}
       />
+      {/* Con COMANDA_AL_PAGAR, crear un pedido desde Mesas termina aqui (replace). */}
+      <Stack.Screen
+        name="WaiterPayment"
+        component={WaiterPaymentScreen}
+        options={{ title: 'Cobrar Mesa' }}
+      />
       <Stack.Screen
         name="Products"
         component={ProductsScreen}

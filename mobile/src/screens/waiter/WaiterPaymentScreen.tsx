@@ -32,6 +32,7 @@ import {
   BORDER_RADIUS,
 } from '../../constants';
 import { showAlert } from '../../utils/alert';
+import { formatearUsd } from '../../utils/dinero';
 import { useDescartarSinCobrar } from '../../hooks/useDescartarSinCobrar';
 import {
   CREDITO_HABILITADO,
@@ -270,6 +271,9 @@ export const WaiterPaymentScreen: React.FC = () => {
     };
   }, [order, paymentEntries, bcvRate, effectiveTotalUsd]);
 
+  // Enviar a caja solo con el pago completo: sin cobro cubierto, caja recibiria una orden a medias.
+  const faltaCobrar = remainingUsd > 0.01;
+
   const confirmedEntries = useMemo(
     () => paymentEntries.filter((e) => e.confirmed),
     [paymentEntries],
@@ -431,6 +435,13 @@ export const WaiterPaymentScreen: React.FC = () => {
 
   const handleSendToCashier = () => {
     if (!order || !user || confirmedEntries.length === 0) return;
+    if (faltaCobrar) {
+      showAlert(
+        'Falta por cobrar',
+        `Falta ${formatearUsd(remainingUsd)} por cobrar: completa el pago antes de enviarlo`,
+      );
+      return;
+    }
     setShowConfirmSend(true);
   };
 
@@ -1555,6 +1566,7 @@ export const WaiterPaymentScreen: React.FC = () => {
                   styles.payButtonWrapper,
                   (isProcessing ||
                     isUploading ||
+                    faltaCobrar ||
                     order.creditRequest?.status === 'REQUESTED') &&
                     styles.payButtonWrapperDisabled,
                 ]}
@@ -1564,6 +1576,7 @@ export const WaiterPaymentScreen: React.FC = () => {
                   disabled={
                     isProcessing ||
                     isUploading ||
+                    faltaCobrar ||
                     order.creditRequest?.status === 'REQUESTED'
                   }
                   activeOpacity={0.9}
@@ -1594,9 +1607,9 @@ export const WaiterPaymentScreen: React.FC = () => {
                           color={COLORS.background}
                         />
                         <Text style={styles.payButtonText}>
-                          Enviar {confirmedEntries.length}{' '}
-                          {confirmedEntries.length === 1 ? 'pago' : 'pagos'} a
-                          Caja
+                          {faltaCobrar
+                            ? `Falta ${formatearUsd(remainingUsd)} por cobrar`
+                            : `Enviar ${confirmedEntries.length} ${confirmedEntries.length === 1 ? 'pago' : 'pagos'} a Caja`}
                         </Text>
                       </>
                     )}

@@ -1,7 +1,7 @@
 import { api } from './api/apiClient';
 import { paramsPendientesDeCobro } from '../queries/filtrosDeOrdenes';
 import { COMANDA_AL_PAGAR } from '../config/funciones';
-import { pedidoCobrado } from './pedidoCobrado';
+import { visibleParaCaja, visibleParaEstaciones } from './pedidoCobrado';
 import {
   FILTROS_DE_SERVIDOR,
   coincideConElFiltro,
@@ -84,6 +84,8 @@ interface RawOrder {
   items?: RawOrderItem[];
   status: OrderStatusEnum;
   paymentStatus: PaymentStatusEnum;
+  /** Caja rechazo el pago: vuelve a pending, pero su comanda ya salio. */
+  paymentRejected?: boolean | null;
   paymentMethod?: PaymentMethodEnum;
   subtotal?: number;
   /** Tarifas con las que se creó la orden (ver `tarifasDeOrden`). */
@@ -191,6 +193,9 @@ function normalizeOrder(raw: RawOrder): Order {
     items: (raw.items ?? []).map(normalizeItem),
     status: raw.status,
     paymentStatus: raw.paymentStatus,
+    // Sin esto el rechazo nunca llega a la app: la comanda de un pago rechazado
+    // (vuelve a pending) no se reconoce como ya enviada ni se mantiene en cocina.
+    paymentRejected: raw.paymentRejected ?? false,
     paymentMethod: raw.paymentMethod,
     subtotal: raw.subtotal ?? 0,
     tax: raw.tax,
@@ -840,8 +845,9 @@ export const orderService = {
       (o) =>
         (ACTIVE_STATUSES.includes(o.status) ||
           o.status === OrderStatusEnum.DELIVERED) &&
-        // Con la comanda al cobrar, la estacion solo ve pedidos ya cobrados.
-        (!COMANDA_AL_PAGAR || pedidoCobrado(o.paymentStatus)),
+        // Con la comanda al cobrar, la estacion solo ve pedidos ya cobrados
+        // (o rechazados: su comanda ya salio). Ver visibleParaEstaciones.
+        visibleParaEstaciones(o, COMANDA_AL_PAGAR),
       callback,
     );
   },
@@ -1060,7 +1066,12 @@ export const orderService = {
       '/api/orders',
       paramsPendientesDeCobro(),
     );
-    return list.map(normalizeOrder);
+    // Caja ve solo lo cobrado (pending_verification, partial) y las cuentas a
+    // credito. Lo que el mesonero no cobro (pending) o fue rechazado vuelve al
+    // mesonero y no aparece aqui. Con COMANDA_AL_PAGAR apagada, no filtra nada.
+    return list
+      .map(normalizeOrder)
+      .filter((o) => visibleParaCaja(o, COMANDA_AL_PAGAR));
   },
 
   /**

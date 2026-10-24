@@ -56,9 +56,9 @@ export const ProfileScreen: React.FC = () => {
 
   const avatarInitial = customer?.name?.charAt(0).toUpperCase() ?? 'U';
 
-  // Mostrar botón "Fichar" solo para roles que necesitan asistencia
+  // Mostrar botón "Fichar" para cocina, barra y pizza. El mesonero no lo ve aquí: ya ficha desde
+  // su pestaña "Fichar" (WaiterTabs), y esta pila no tiene la pantalla de asistencia de ellos.
   const showAttendanceButton =
-    role === UserRoleEnum.WAITER ||
     role === UserRoleEnum.KITCHEN ||
     role === UserRoleEnum.BAR ||
     role === UserRoleEnum.PIZZA;

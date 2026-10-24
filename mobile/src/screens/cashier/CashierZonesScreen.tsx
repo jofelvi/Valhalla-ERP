@@ -28,6 +28,8 @@ import { getBcvRate, usdToBs } from '../../services/bcvRateService';
 import { Order, OrderStatusEnum, ZoneSectorEnum } from '../../types';
 import { RootStackParamList } from '../../navigation/types';
 import { getOrderDisplayStatus } from '../../utils/orderStatusHelpers';
+import { COMANDA_AL_PAGAR } from '../../config/funciones';
+import { visibleParaCaja } from '../../services/pedidoCobrado';
 import { formatearUsd, formatearBs } from '../../utils/dinero';
 
 import { useVocab } from '../../config/hooks';
@@ -104,8 +106,12 @@ export const CashierZonesScreen: React.FC = () => {
     return () => unsubscribe();
   }, [fadeAnim]);
 
-  const activeOrders = allOrders.filter((o) =>
-    ACTIVE_STATUSES.includes(o.status),
+  // Con COMANDA_AL_PAGAR caja solo ve lo cobrado: un pedido sin pagar sigue en
+  // manos del mesonero, y uno rechazado vuelve a el para recobrar.
+  const activeOrders = allOrders.filter(
+    (o) =>
+      ACTIVE_STATUSES.includes(o.status) &&
+      visibleParaCaja(o, COMANDA_AL_PAGAR),
   );
 
   const sectorGroups: SectorGroup[] = SECTORS.map((sector) => {
