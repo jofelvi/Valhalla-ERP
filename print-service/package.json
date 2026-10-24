@@ -1,6 +1,6 @@
 {
   "name": "print-service",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Servicio local de impresión térmica ESC/POS (Windows + Linux) que escucha la cola del backend por WebSocket y polling",
   "main": "dist/index.js",
   "scripts": {

@@ -2,6 +2,8 @@ import { exec } from 'child_process';
 import * as fs from 'fs';
 import { sendRawToPrinter as sendWindows } from './windowsPrinter';
 import { sendRawToPrinter as sendLinux } from './linuxPrinter';
+import { sendTextToPrinter as sendTextWindows } from './windowsPrinter';
+import { escposATexto, esImpresoraDeTexto } from './textoPlano';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -12,6 +14,9 @@ export async function sendRawToPrinter(
   printerName: string,
   data: Buffer,
 ): Promise<void> {
+  if (IS_WINDOWS && esImpresoraDeTexto(printerName)) {
+    return sendTextWindows(printerName, escposATexto(data));
+  }
   if (IS_WINDOWS) return sendWindows(printerName, data);
   return sendLinux(printerName, data);
 }

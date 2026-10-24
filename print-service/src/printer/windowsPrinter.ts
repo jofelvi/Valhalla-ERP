@@ -111,3 +111,70 @@ export function sendRawToPrinter(
     );
   });
 }
+
+const PS_TEXT_SCRIPT_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  'scripts',
+  'send-text.ps1',
+);
+
+/** Modo texto (impresoras laser o de tinta): imprime con el driver de Windows. */
+export function sendTextToPrinter(
+  printerName: string,
+  texto: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tempFile = path.join(
+      os.tmpdir(),
+      `ticket_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.txt`,
+    );
+    try {
+      fs.writeFileSync(tempFile, texto, 'utf8');
+    } catch (writeErr) {
+      const msg =
+        writeErr instanceof Error ? writeErr.message : String(writeErr);
+      reject(new Error(`Temp file error: ${msg}`));
+      return;
+    }
+    log.info(
+      'Printer',
+      `Enviando ${texto.length} caracteres (modo texto) → "${printerName}"`,
+    );
+    execFile(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        path.resolve(PS_TEXT_SCRIPT_PATH),
+        '-PrinterName',
+        printerName,
+        '-FilePath',
+        tempFile,
+      ],
+      { timeout: 30000 },
+      (error, stdout, stderr) => {
+        try {
+          fs.unlinkSync(tempFile);
+        } catch {
+          /* ignore */
+        }
+        if (error) {
+          const detalle = stderr?.trim() || error.message;
+          log.error(
+            'Printer',
+            `FALLO modo texto en "${printerName}": ${detalle}`,
+          );
+          reject(new Error(`Print failed: ${detalle}`));
+          return;
+        }
+        log.info('Printer', `OK — ${stdout?.trim() || 'texto enviado'}`);
+        resolve();
+      },
+    );
+  });
+}
