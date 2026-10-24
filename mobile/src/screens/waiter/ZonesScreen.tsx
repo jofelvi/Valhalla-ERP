@@ -215,7 +215,9 @@ export const ZonesScreen: React.FC = () => {
   };
 
   const renderOrderCard = (order: Order) => {
-    const estado = getOrderDisplayStatus(order);
+    const estado = getOrderDisplayStatus(order, {
+      avisoDeVerificacionAparte: true,
+    });
     const statusColor = estado.color;
     return (
       <TouchableOpacity

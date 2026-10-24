@@ -163,14 +163,22 @@ const ICONO_POR_TONO: Record<
  * Etiqueta, color e icono de una orden para las listas: el estado de pago manda sobre el de la
  * orden, de modo que un pedido ya cobrado no aparece como "Pendiente".
  */
-export const getOrderDisplayStatus = (order: {
-  status?: string | null;
-  paymentStatus?: string | null;
-  paymentRejected?: boolean | null;
-}) => {
-  const { etiqueta, tono } = estadoVisibleDePedido(order);
+export const getOrderDisplayStatus = (
+  order: {
+    status?: string | null;
+    paymentStatus?: string | null;
+    paymentRejected?: boolean | null;
+  },
+  /** La pantalla ya muestra su propio aviso de "en verificación": no repetirlo en la etiqueta. */
+  opciones: { avisoDeVerificacionAparte?: boolean } = {},
+) => {
+  const { etiqueta, tono, porVerificar } = estadoVisibleDePedido(order);
   return {
-    label: etiqueta,
+    porVerificar: porVerificar === true,
+    label:
+      porVerificar && !opciones.avisoDeVerificacionAparte
+        ? `${etiqueta} · por verificar`
+        : etiqueta,
     color: COLOR_POR_TONO[tono],
     icon: ICONO_POR_TONO[tono],
   };

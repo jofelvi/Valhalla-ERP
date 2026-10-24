@@ -14,6 +14,8 @@ export type TonoDeEstado =
 export interface EstadoVisible {
   etiqueta: string;
   tono: TonoDeEstado;
+  /** Cobrado por el mesonero y a la espera de que caja lo verifique. */
+  porVerificar?: boolean;
 }
 
 interface PedidoParaEstado {
@@ -53,8 +55,9 @@ export function estadoVisibleDePedido(
   const etapa = ETAPA_DE_COCINA[orden];
   const conEtapa = (base: string) => (etapa ? `${base} · ${etapa}` : base);
 
+  // Para el mesonero, marcarlo pagado ES pagado; caja lo verifica despues (aviso aparte).
   if (pago === 'pending_verification')
-    return { etiqueta: conEtapa('Por verificar'), tono: 'verificar' };
+    return { etiqueta: conEtapa('Pagado'), tono: 'pagado', porVerificar: true };
   if (pago === 'paid') return { etiqueta: conEtapa('Pagado'), tono: 'pagado' };
   if (pago === 'partial')
     return { etiqueta: conEtapa('Pago parcial'), tono: 'parcial' };

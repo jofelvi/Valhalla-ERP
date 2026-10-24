@@ -1005,12 +1005,22 @@ export const WaiterCreateOrderScreen: React.FC = () => {
                 ) : (
                   <>
                     <Ionicons
-                      name={isAddMode ? 'add-circle' : 'send'}
+                      name={
+                        isAddMode
+                          ? 'add-circle'
+                          : COMANDA_AL_PAGAR
+                            ? 'cash-outline'
+                            : 'send'
+                      }
                       size={18}
                       color={COLORS.background}
                     />
                     <Text style={styles.sendButtonText}>
-                      {isAddMode ? 'Agregar Productos' : 'Enviar Pedido'}
+                      {isAddMode
+                        ? 'Agregar Productos'
+                        : COMANDA_AL_PAGAR
+                          ? 'Ir a cobrar'
+                          : 'Enviar Pedido'}
                     </Text>
                   </>
                 )}

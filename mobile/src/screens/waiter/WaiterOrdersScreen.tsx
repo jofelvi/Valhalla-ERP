@@ -440,7 +440,9 @@ export const WaiterOrdersScreen: React.FC = () => {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
-          const estado = getOrderDisplayStatus(item);
+          const estado = getOrderDisplayStatus(item, {
+            avisoDeVerificacionAparte: true,
+          });
           const statusColor = estado.color;
           const showCollect = canCollect(item);
           return (
@@ -505,6 +507,17 @@ export const WaiterOrdersScreen: React.FC = () => {
                   })}
                 </Text>
               </View>
+
+              {estado.porVerificar && (
+                <View style={styles.verificationBadge}>
+                  <Ionicons
+                    name="time-outline"
+                    size={13}
+                    color={COLORS.warning}
+                  />
+                  <Text style={styles.verificationText}>Por verificar</Text>
+                </View>
+              )}
 
               {item.paymentRejected && (
                 <View style={styles.rejectedBadge}>

@@ -13,10 +13,11 @@ describe('estadoVisibleDePedido', () => {
     });
   });
 
-  it('cobrado por el mesonero y a la espera de caja dice "Por verificar"', () => {
+  it('cobrado por el mesonero dice "Pagado" y marca que caja debe verificarlo', () => {
     assert.deepEqual(ver('PENDING', 'pending_verification'), {
-      etiqueta: 'Por verificar',
-      tono: 'verificar',
+      etiqueta: 'Pagado',
+      tono: 'pagado',
+      porVerificar: true,
     });
   });
 
@@ -27,7 +28,7 @@ describe('estadoVisibleDePedido', () => {
     );
     assert.equal(
       ver('READY', 'pending_verification').etiqueta,
-      'Por verificar · Listo',
+      'Pagado · Listo',
     );
   });
 
