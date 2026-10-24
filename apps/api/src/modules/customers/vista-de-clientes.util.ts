@@ -68,11 +68,11 @@ export function proyeccionPedida(vista?: string): Record<string, 1> | null {
  * que el megabyte.
  *
  * El techo existe igual para que el endpoint deje de ser ilimitado mientras el
- * padron crece. Si algun dia se llega a 5.000, la respuesta correcta es mover
+ * padron crece (24/10/2026: 9.055 con el padron del club, por eso 15.000). Si se llega al techo, la respuesta correcta es mover
  * la busqueda al servidor —el endpoint `/search` ya existe—, no subir el
  * numero.
  */
-export const TOPE_DE_CLIENTES = { defecto: 5000, duro: 5000 };
+export const TOPE_DE_CLIENTES = { defecto: 15000, duro: 15000 };
 
 /** Solo activos. Lo usan los selectores, que no deben ofrecer bajas. */
 export function condicionDeActivos(

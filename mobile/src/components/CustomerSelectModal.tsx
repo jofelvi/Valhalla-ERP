@@ -46,6 +46,19 @@ interface Props {
 const DEBOUNCE_MS = 350;
 const MIN_CHARS = 2;
 
+/** Un número de socio puede ser de un solo dígito ("2" → 00002); el texto pide MIN_CHARS. */
+const puedeBuscar = (q: string): boolean =>
+  /^\d+$/.test(q) ? q.length >= 1 : q.length >= MIN_CHARS;
+
+/** Cédula tal como se muestra: "V-14039802" (la ficha guarda tipo e id por separado). */
+const cedulaVisible = (c: Customer): string | null =>
+  c.cedula ||
+  (c.identificationId
+    ? c.identificationType
+      ? `${c.identificationType}-${c.identificationId}`
+      : c.identificationId
+    : null);
+
 export const CustomerSelectModal: React.FC<Props> = ({
   visible,
   onClose,
@@ -118,7 +131,7 @@ export const CustomerSelectModal: React.FC<Props> = ({
    */
   const runSearch = useCallback(async (raw: string) => {
     const q = raw.trim();
-    if (q.length < MIN_CHARS) {
+    if (!puedeBuscar(q)) {
       setSearchResults([]);
       setSearched(false);
       setSearching(false);
@@ -285,8 +298,8 @@ export const CustomerSelectModal: React.FC<Props> = ({
 
   const emptyLabel = (): string => {
     if (searching) return '';
-    if (searchQuery.trim().length < MIN_CHARS) {
-      return 'Escribí el nombre, la cédula, el teléfono o el número de acción.';
+    if (!puedeBuscar(searchQuery.trim())) {
+      return 'Escribí el nombre, la cédula o el número de socio.';
     }
     if (searched) return 'Sin resultados. Podés darlo de alta en "Nuevo".';
     return '';
@@ -337,7 +350,7 @@ export const CustomerSelectModal: React.FC<Props> = ({
                     style={styles.input}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
-                    placeholder="Nombre, cédula, teléfono o acción"
+                    placeholder="Nombre, cédula o número de socio"
                     placeholderTextColor={COLORS.textSecondary}
                     autoFocus
                     autoCorrect={false}
@@ -387,7 +400,7 @@ export const CustomerSelectModal: React.FC<Props> = ({
                         <Text style={styles.resultMeta} numberOfLines={1}>
                           {[
                             c.memberAction ? `Socio #${c.memberAction}` : null,
-                            c.cedula || null,
+                            cedulaVisible(c),
                             c.phone || null,
                           ]
                             .filter(Boolean)

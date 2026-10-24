@@ -66,7 +66,7 @@ export class CustomersController {
     required: false,
     description: "'true' deja fuera las fichas dadas de baja.",
   })
-  @ApiQuery({ name: 'limit', required: false, description: 'Techo: 5000' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Techo: 15000' })
   @ApiQuery({ name: 'page', required: false })
   async findAll(
     @Query('vista') vista?: string,
