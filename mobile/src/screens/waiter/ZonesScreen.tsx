@@ -34,10 +34,7 @@ import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store';
 import { TransferModal } from '../../components';
 import { Button, Card } from '../../components/ui';
-import {
-  getOrderStatusColor,
-  getOrderStatusLabel,
-} from '../../utils/orderStatusHelpers';
+import { getOrderDisplayStatus } from '../../utils/orderStatusHelpers';
 import { formatearUsd, formatearBs } from '../../utils/dinero';
 
 import { useVocab } from '../../config/hooks';
@@ -218,7 +215,8 @@ export const ZonesScreen: React.FC = () => {
   };
 
   const renderOrderCard = (order: Order) => {
-    const statusColor = getOrderStatusColor(order.status);
+    const estado = getOrderDisplayStatus(order);
+    const statusColor = estado.color;
     return (
       <TouchableOpacity
         key={order.id}
@@ -243,7 +241,7 @@ export const ZonesScreen: React.FC = () => {
               style={[styles.statusDot, { backgroundColor: statusColor }]}
             />
             <Text style={[styles.statusBadgeText, { color: statusColor }]}>
-              {getOrderStatusLabel(order.status)}
+              {estado.label}
             </Text>
           </View>
         </View>

@@ -27,10 +27,7 @@ import { orderService } from '../../services';
 import { getBcvRate, usdToBs } from '../../services/bcvRateService';
 import { Order, OrderStatusEnum, ZoneSectorEnum } from '../../types';
 import { RootStackParamList } from '../../navigation/types';
-import {
-  getOrderStatusColor,
-  getOrderStatusLabel,
-} from '../../utils/orderStatusHelpers';
+import { getOrderDisplayStatus } from '../../utils/orderStatusHelpers';
 import { formatearUsd, formatearBs } from '../../utils/dinero';
 
 import { useVocab } from '../../config/hooks';
@@ -166,7 +163,8 @@ export const CashierZonesScreen: React.FC = () => {
   };
 
   const renderOrderCard = (order: Order) => {
-    const statusColor = getOrderStatusColor(order.status);
+    const estado = getOrderDisplayStatus(order);
+    const statusColor = estado.color;
     return (
       <TouchableOpacity
         key={order.id}
@@ -191,7 +189,7 @@ export const CashierZonesScreen: React.FC = () => {
               style={[styles.statusDot, { backgroundColor: statusColor }]}
             />
             <Text style={[styles.statusBadgeText, { color: statusColor }]}>
-              {getOrderStatusLabel(order.status)}
+              {estado.label}
             </Text>
           </View>
         </View>

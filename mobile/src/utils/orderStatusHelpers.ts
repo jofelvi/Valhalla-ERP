@@ -9,6 +9,10 @@ import {
   PaymentStatusEnum,
   PaymentMethodEnum,
 } from '../types';
+import {
+  estadoVisibleDePedido,
+  TonoDeEstado,
+} from '../services/estadoVisibleDePedido';
 
 /**
  * Retorna el color para un estado de orden.
@@ -126,4 +130,48 @@ export const getPaymentMethodIcon = (method: PaymentMethodEnum): string => {
     [PaymentMethodEnum.PENDING]: 'hourglass-outline',
   };
   return methodIconMap[method] ?? 'help-circle-outline';
+};
+
+const COLOR_POR_TONO: Record<TonoDeEstado, string> = {
+  porCobrar: COLORS.warning,
+  pendiente: COLORS.warning,
+  verificar: COLORS.warning,
+  pagado: COLORS.success,
+  rechazado: COLORS.error,
+  parcial: COLORS.warning,
+  credito: COLORS.cyan,
+  cancelado: COLORS.error,
+  entregado: COLORS.success,
+};
+
+const ICONO_POR_TONO: Record<
+  TonoDeEstado,
+  keyof typeof import('@expo/vector-icons').Ionicons.glyphMap
+> = {
+  porCobrar: 'cash-outline',
+  pendiente: 'time-outline',
+  verificar: 'time-outline',
+  pagado: 'checkmark-circle-outline',
+  rechazado: 'close-circle-outline',
+  parcial: 'swap-horizontal-outline',
+  credito: 'card-outline',
+  cancelado: 'close-circle-outline',
+  entregado: 'checkmark-done-outline',
+};
+
+/**
+ * Etiqueta, color e icono de una orden para las listas: el estado de pago manda sobre el de la
+ * orden, de modo que un pedido ya cobrado no aparece como "Pendiente".
+ */
+export const getOrderDisplayStatus = (order: {
+  status?: string | null;
+  paymentStatus?: string | null;
+  paymentRejected?: boolean | null;
+}) => {
+  const { etiqueta, tono } = estadoVisibleDePedido(order);
+  return {
+    label: etiqueta,
+    color: COLOR_POR_TONO[tono],
+    icon: ICONO_POR_TONO[tono],
+  };
 };

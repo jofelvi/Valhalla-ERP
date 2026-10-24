@@ -23,11 +23,7 @@ import {
   BORDER_RADIUS,
   SHADOWS,
 } from '../../constants';
-import {
-  getOrderStatusColor,
-  getOrderStatusIcon,
-  getOrderStatusLabel,
-} from '../../utils/orderStatusHelpers';
+import { getOrderDisplayStatus } from '../../utils/orderStatusHelpers';
 import { formatearUsd, formatearBs } from '../../utils/dinero';
 
 interface OrdersScreenProps {
@@ -86,7 +82,8 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
   };
 
   const renderOrder = ({ item }: { item: Order }) => {
-    const statusColor = getOrderStatusColor(item.status);
+    const estado = getOrderDisplayStatus(item);
+    const statusColor = estado.color;
     return (
       <TouchableOpacity
         style={[styles.orderCard, { borderLeftColor: statusColor }]}
@@ -106,13 +103,9 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({ navigation }) => {
               { backgroundColor: `${statusColor}18` },
             ]}
           >
-            <Ionicons
-              name={getOrderStatusIcon(item.status)}
-              size={13}
-              color={statusColor}
-            />
+            <Ionicons name={estado.icon} size={13} color={statusColor} />
             <Text style={[styles.statusText, { color: statusColor }]}>
-              {getOrderStatusLabel(item.status)}
+              {estado.label}
             </Text>
           </View>
         </View>

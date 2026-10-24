@@ -29,11 +29,7 @@ import { useAuthStore } from '../../store';
 import { TransferToWaiterModal } from '../../components';
 import { Button } from '../../components/ui';
 import { showAlert } from '../../utils/alert';
-import {
-  getOrderStatusColor,
-  getOrderStatusIcon,
-  getOrderStatusLabel,
-} from '../../utils/orderStatusHelpers';
+import { getOrderDisplayStatus } from '../../utils/orderStatusHelpers';
 import { formatearUsd, formatearBs } from '../../utils/dinero';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -444,7 +440,8 @@ export const WaiterOrdersScreen: React.FC = () => {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => {
-          const statusColor = getOrderStatusColor(item.status);
+          const estado = getOrderDisplayStatus(item);
+          const statusColor = estado.color;
           const showCollect = canCollect(item);
           return (
             <TouchableOpacity
@@ -474,13 +471,9 @@ export const WaiterOrdersScreen: React.FC = () => {
                     { backgroundColor: `${statusColor}18` },
                   ]}
                 >
-                  <Ionicons
-                    name={getOrderStatusIcon(item.status)}
-                    size={12}
-                    color={statusColor}
-                  />
+                  <Ionicons name={estado.icon} size={12} color={statusColor} />
                   <Text style={[styles.statusText, { color: statusColor }]}>
-                    {getOrderStatusLabel(item.status)}
+                    {estado.label}
                   </Text>
                 </View>
               </View>
@@ -513,21 +506,13 @@ export const WaiterOrdersScreen: React.FC = () => {
                 </Text>
               </View>
 
-              {item.paymentStatus ===
-                PaymentStatusEnum.PENDING_VERIFICATION && (
-                <View style={styles.verificationBadge}>
-                  <Ionicons
-                    name="time-outline"
-                    size={13}
-                    color={COLORS.warning}
-                  />
-                  <Text style={styles.verificationText}>Por verificar</Text>
-                </View>
-              )}
-
               {item.paymentRejected && (
                 <View style={styles.rejectedBadge}>
-                  <Ionicons name="close-circle" size={13} color="COLORS.errorLight" />
+                  <Ionicons
+                    name="close-circle"
+                    size={13}
+                    color="COLORS.errorLight"
+                  />
                   <View style={styles.rejectedBadgeContent}>
                     <Text style={styles.rejectedBadgeTitle}>
                       Pago rechazado
