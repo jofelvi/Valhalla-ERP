@@ -1,3 +1,4 @@
+import { PROPINA_HABILITADA } from '../../config/funciones';
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -143,17 +144,19 @@ export const WaiterCommissionsScreen: React.FC = () => {
               </Text>
             ) : null}
           </View>
-          <View style={[styles.summaryCard, { flex: 1 }]}>
-            <Text style={styles.summaryLabel}>Propinas</Text>
-            <Text style={styles.summaryValue}>
-              {formatearUsd(resumen.totalTip)}
-            </Text>
-            {bcvRate > 0 ? (
-              <Text style={styles.summaryBs}>
-                {formatearBs(usdToBs(resumen.totalTip, bcvRate))}
+          {PROPINA_HABILITADA ? (
+            <View style={[styles.summaryCard, { flex: 1 }]}>
+              <Text style={styles.summaryLabel}>Propinas</Text>
+              <Text style={styles.summaryValue}>
+                {formatearUsd(resumen.totalTip)}
               </Text>
-            ) : null}
-          </View>
+              {bcvRate > 0 ? (
+                <Text style={styles.summaryBs}>
+                  {formatearBs(usdToBs(resumen.totalTip, bcvRate))}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           <View style={[styles.summaryCard, { flex: 0.75 }]}>
             <Text style={styles.summaryLabel}>Pagos</Text>
             <Text style={styles.summaryValue}>{resumen.paymentCount}</Text>
@@ -210,7 +213,7 @@ export const WaiterCommissionsScreen: React.FC = () => {
                   <Text style={styles.cardAmount}>
                     {formatearUsd(item.montoTotal)}
                   </Text>
-                  {(item.tipTotal ?? 0) > 0 ? (
+                  {PROPINA_HABILITADA && (item.tipTotal ?? 0) > 0 ? (
                     <Text style={styles.cardTip}>
                       + {formatearUsd(item.tipTotal)} propina
                     </Text>

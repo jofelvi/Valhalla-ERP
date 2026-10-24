@@ -37,6 +37,8 @@ import {
   PACKAGING,
 } from '../../services';
 import { enqueuePrintFicha } from '../../services/printQueueService';
+import { pedidoCobrado } from '../../services/comandaAlPagar';
+import { COMANDA_AL_PAGAR } from '../../config/funciones';
 import { genClientRequestId } from '../../services/orderService';
 import { useProductosDelMenu, useCategorias } from '../../queries/useCatalogo';
 import {
@@ -357,37 +359,43 @@ export const WaiterCreateOrderScreen: React.FC = () => {
           notes || undefined,
         );
 
-        // Encolar comanda para impresion (items nuevos)
         // Obtener orderType del pedido existente para la comanda
         const existingOrder = await orderService.getOrderById(orderId);
-        const comandaItems = items.map((ci) => ({
-          productId: ci.product.id,
-          productName: ci.product.name,
-          quantity: ci.quantity,
-          unitPrice: ci.product.price,
-          totalPrice: ci.product.price * ci.quantity,
-          notes: ci.notes ?? null,
-          station: ci.product.station ?? null,
-        }));
-        printQueueService
-          .enqueuePrintComanda(
-            {
-              id: orderId,
-              tableId,
-              tableName,
-              sector: existingOrder?.sector ?? sector ?? null,
-              orderType: existingOrder?.orderType ?? null,
-              notes: notes ?? existingOrder?.notes ?? null,
-            },
-            comandaItems,
-            {
-              waiterName:
-                customerProfile?.name ?? user.displayName ?? undefined,
-            },
-          )
-          .catch((err) =>
-            console.error('[PrintQueue] Error encolando comanda:', err),
-          );
+        // Con COMANDA_AL_PAGAR, una orden sin cobrar no imprime nada aqui: los
+        // items nuevos salen en la comanda cuando la orden se cobra.
+        const comandaSaleAhora =
+          !COMANDA_AL_PAGAR || pedidoCobrado(existingOrder?.paymentStatus);
+        if (comandaSaleAhora) {
+          // Encolar comanda para impresion (items nuevos)
+          const comandaItems = items.map((ci) => ({
+            productId: ci.product.id,
+            productName: ci.product.name,
+            quantity: ci.quantity,
+            unitPrice: ci.product.price,
+            totalPrice: ci.product.price * ci.quantity,
+            notes: ci.notes ?? null,
+            station: ci.product.station ?? null,
+          }));
+          printQueueService
+            .enqueuePrintComanda(
+              {
+                id: orderId,
+                tableId,
+                tableName,
+                sector: existingOrder?.sector ?? sector ?? null,
+                orderType: existingOrder?.orderType ?? null,
+                notes: notes ?? existingOrder?.notes ?? null,
+              },
+              comandaItems,
+              {
+                waiterName:
+                  customerProfile?.name ?? user.displayName ?? undefined,
+              },
+            )
+            .catch((err) =>
+              console.error('[PrintQueue] Error encolando comanda:', err),
+            );
+        }
 
         clearOrder();
         showAlert(
@@ -421,50 +429,62 @@ export const WaiterCreateOrderScreen: React.FC = () => {
         // Orden creada: el proximo checkout desde esta pantalla es otro pedido
         checkoutRequestIdRef.current = genClientRequestId();
 
-        // Encolar comanda para impresion
-        const comandaItems = items.map((ci) => ({
-          productId: ci.product.id,
-          productName: ci.product.name,
-          quantity: ci.quantity,
-          unitPrice: ci.product.price,
-          totalPrice: ci.product.price * ci.quantity,
-          notes: ci.notes ?? null,
-          station: ci.product.station ?? null,
-        }));
-        printQueueService
-          .enqueuePrintComanda(
-            {
-              id: newOrderId,
-              tableId,
-              tableName,
-              sector: sector ?? null,
-              orderType,
-              notes: notes ?? null,
-            },
-            comandaItems,
-            {
-              waiterName:
-                customerProfile?.name ?? user.displayName ?? undefined,
-              cajaSummary: true,
-            },
-          )
-          .catch((err) =>
-            console.error('[PrintQueue] Error encolando comanda:', err),
-          );
+        // Con COMANDA_AL_PAGAR la comanda y la ficha salen al cobrar
+        // (WaiterPaymentScreen), no al crear el pedido.
+        if (!COMANDA_AL_PAGAR) {
+          // Encolar comanda para impresion
+          const comandaItems = items.map((ci) => ({
+            productId: ci.product.id,
+            productName: ci.product.name,
+            quantity: ci.quantity,
+            unitPrice: ci.product.price,
+            totalPrice: ci.product.price * ci.quantity,
+            notes: ci.notes ?? null,
+            station: ci.product.station ?? null,
+          }));
+          printQueueService
+            .enqueuePrintComanda(
+              {
+                id: newOrderId,
+                tableId,
+                tableName,
+                sector: sector ?? null,
+                orderType,
+                notes: notes ?? null,
+              },
+              comandaItems,
+              {
+                waiterName:
+                  customerProfile?.name ?? user.displayName ?? undefined,
+                cajaSummary: true,
+              },
+            )
+            .catch((err) =>
+              console.error('[PrintQueue] Error encolando comanda:', err),
+            );
 
-        // Ficha de barra (QR + saldo). No bloquea el flujo.
-        enqueuePrintFicha(newOrderId, {
-          waiterName: customerProfile?.name ?? user.displayName ?? undefined,
-        }).catch(() => {});
+          // Ficha de barra (QR + saldo). No bloquea el flujo.
+          enqueuePrintFicha(newOrderId, {
+            waiterName: customerProfile?.name ?? user.displayName ?? undefined,
+          }).catch(() => {});
+        }
 
         clearOrder();
-        const locationLabel =
-          isZoneMode && sector ? SECTOR_LABELS[sector] : tableName;
-        showAlert(
-          '¡Pedido enviado!',
-          `Pedido registrado para ${locationLabel}`,
-          [{ text: 'OK', onPress: () => navigation.goBack() }],
-        );
+        if (COMANDA_AL_PAGAR) {
+          // Flujo directo al cobro. replace: el pedido no debe quedar en la pila.
+          navigation.replace('WaiterPayment', {
+            orderId: newOrderId,
+            tableId: isZoneMode ? undefined : (tableId ?? undefined),
+          });
+        } else {
+          const locationLabel =
+            isZoneMode && sector ? SECTOR_LABELS[sector] : tableName;
+          showAlert(
+            '¡Pedido enviado!',
+            `Pedido registrado para ${locationLabel}`,
+            [{ text: 'OK', onPress: () => navigation.goBack() }],
+          );
+        }
       }
     } catch (error) {
       // Backend puede rechazar con 400 'mesa ocupada' cuando otro mesonero

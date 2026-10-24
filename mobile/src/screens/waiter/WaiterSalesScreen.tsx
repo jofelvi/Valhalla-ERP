@@ -1,3 +1,4 @@
+import { PROPINA_HABILITADA } from '../../config/funciones';
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -401,12 +402,14 @@ export const WaiterSalesScreen: React.FC = () => {
                     color={COLORS.primary}
                     icon="receipt-outline"
                   />
-                  <SummaryCard
-                    label="Propinas"
-                    value={formatearUsd(resume.tips)}
-                    color="COLORS.primaryDark"
-                    icon="hand-right-outline"
-                  />
+                  {PROPINA_HABILITADA ? (
+                    <SummaryCard
+                      label="Propinas"
+                      value={formatearUsd(resume.tips)}
+                      color="COLORS.primaryDark"
+                      icon="hand-right-outline"
+                    />
+                  ) : null}
                   <SummaryCard
                     label="Servicio"
                     value={formatearUsd(resume.serviceCharge)}

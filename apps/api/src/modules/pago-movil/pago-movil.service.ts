@@ -23,6 +23,8 @@ import { Payment, PaymentDocument } from '../payments/schemas/payment.schema';
 import { Invoice, InvoiceDocument } from '../invoices/schemas/invoice.schema';
 import { ConfigsService } from '../configs/configs.service';
 import { moduloActivo } from '../../common/modulos/modulo-activo';
+import { PushService } from '../push/push.service';
+import { buildPagoMovilConfirmedMessage } from '../push/pago-movil-message';
 
 // El `order` que recibe PagoMovil llega tanto hidratado (Document) como en
 // `lean()` (el llamador en orders.service usa lean); aquí solo se LEEN campos,
@@ -78,6 +80,7 @@ export class PagoMovilService implements OnModuleDestroy {
     private readonly posGateway: PosGateway,
     private readonly configService: ConfigService,
     private readonly configs: ConfigsService,
+    private readonly push: PushService,
   ) {}
 
   // Interruptor de confianza: mientras sea false, el bot verifica contra el
@@ -461,6 +464,17 @@ export class PagoMovilService implements OnModuleDestroy {
             });
           }
         }
+
+        // Solo cuando el banco confirma: las refs que pasaron a 'verified' en ESTE flush.
+        // Un reproceso con refs ya verificadas no vuelve a avisar.
+        if (allVerified) {
+          const recienVerificadas = verifications
+            .filter((v) => v.pmDoc.status !== 'verified')
+            .map((v) => v.pmDoc);
+          if (recienVerificadas.length > 0) {
+            void this.avisarMesoneroPagoMovil(orderId, recienVerificadas);
+          }
+        }
       }
     } catch (err) {
       console.error(
@@ -473,6 +487,47 @@ export class PagoMovilService implements OnModuleDestroy {
       if (this.queue.size > 0) {
         this.scheduleFlush();
       }
+    }
+  }
+
+  /**
+   * Push a los mesoneros de la orden (waiterId + waiterShares) cuando el banco
+   * confirma un Pago Movil. Fire-and-forget: cualquier fallo se registra y nunca
+   * interrumpe la verificacion ni el cierre de la orden.
+   */
+  private async avisarMesoneroPagoMovil(
+    orderId: string,
+    verificadas: PagoMovilDocument[],
+  ): Promise<void> {
+    try {
+      const order = (await this.orderModel
+        .findOne({ _id: orderId })
+        .lean()
+        .exec()) as OrderDocument | null;
+      if (!order) return;
+
+      const destinatarios = new Set<string>();
+      if (order.waiterId) destinatarios.add(String(order.waiterId));
+      for (const share of order.waiterShares ?? []) {
+        if (share.waiterId) destinatarios.add(String(share.waiterId));
+      }
+      if (destinatarios.size === 0) return;
+
+      const amountUsd = verificadas.reduce(
+        (total, pm) => total + (pm.expectedAmountUSD ?? 0),
+        0,
+      );
+      const message = buildPagoMovilConfirmedMessage({ orderId, amountUsd });
+      await this.push.sendToUsers([...destinatarios], {
+        ...message,
+        channelId: 'kitchen',
+        data: { type: 'pago-movil-confirmed', orderId },
+      });
+    } catch (err) {
+      console.error(
+        `[PagoMovil] aviso al mesonero de la orden ${orderId} fallido:`,
+        (err as Error)?.message,
+      );
     }
   }
 

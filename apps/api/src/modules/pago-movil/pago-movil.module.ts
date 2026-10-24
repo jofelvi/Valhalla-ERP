@@ -11,6 +11,7 @@ import { Invoice, InvoiceSchema } from '../invoices/schemas/invoice.schema';
 import { TableSchema } from '../tables/schemas/table.schema';
 import { WebsocketsModule } from '../websockets/websockets.module';
 import { BanvenezModule } from '../banvenez/banvenez.module';
+import { PushModule } from '../push/push.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { BanvenezModule } from '../banvenez/banvenez.module';
     ]),
     WebsocketsModule,
     BanvenezModule,
+    PushModule,
   ],
   controllers: [PagoMovilController],
   providers: [PagoMovilService, BanvenesScrapeService],

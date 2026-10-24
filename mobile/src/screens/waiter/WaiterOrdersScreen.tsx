@@ -1,3 +1,4 @@
+import { PROPINA_HABILITADA } from '../../config/funciones';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -252,7 +253,7 @@ export const WaiterOrdersScreen: React.FC = () => {
 
     showAlert(
       'Aceptar traspaso',
-      `¿Aceptar este pedido de ${order.transferRequest.fromWaiterName}? Tu parte será ${order.transferRequest.toPct}% de propina y comisión.`,
+      `¿Aceptar este pedido de ${order.transferRequest.fromWaiterName}? Tu parte será ${order.transferRequest.toPct}% de ${PROPINA_HABILITADA ? 'propina y ' : ''}comisión.`,
       [
         { text: 'No', onPress: () => {} },
         {

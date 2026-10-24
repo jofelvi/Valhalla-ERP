@@ -1,3 +1,4 @@
+import { PROPINA_HABILITADA } from '../config/funciones';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -242,12 +243,12 @@ export const TransferToWaiterModal: React.FC<TransferToWaiterModalProps> = ({
                     size={14}
                     color={COLORS.textSecondary}
                   />{' '}
-                  Reparto de propina y comisión
+                  Reparto de {PROPINA_HABILITADA ? 'propina y ' : ''}comisión
                 </Text>
 
                 <Text style={styles.shareDescription}>
-                  Tu parte de propina y comisión de esta orden será {fromPct}% y
-                  la de{' '}
+                  Tu parte de {PROPINA_HABILITADA ? 'propina y ' : ''}comisión
+                  de esta orden será {fromPct}% y la de{' '}
                   <Text style={styles.shareWaiterName}>
                     {selectedWaiter.waiterName}
                   </Text>{' '}
@@ -350,7 +351,11 @@ export const TransferToWaiterModal: React.FC<TransferToWaiterModalProps> = ({
 
                 {parseInt(fromPct) + parseInt(toPct) !== 100 && (
                   <View style={styles.errorBanner}>
-                    <Ionicons name="alert-circle" size={16} color="COLORS.errorLight" />
+                    <Ionicons
+                      name="alert-circle"
+                      size={16}
+                      color="COLORS.errorLight"
+                    />
                     <Text style={styles.errorText}>La suma debe ser 100%</Text>
                   </View>
                 )}

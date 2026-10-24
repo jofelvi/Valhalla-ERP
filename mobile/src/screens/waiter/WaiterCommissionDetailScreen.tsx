@@ -1,3 +1,4 @@
+import { PROPINA_HABILITADA } from '../../config/funciones';
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -130,7 +131,7 @@ export const WaiterCommissionDetailScreen: React.FC = () => {
             ≈ {formatearBs(usdToBs(pago.montoTotal, bcvRate))}
           </Text>
         ) : null}
-        {tip > 0 ? (
+        {PROPINA_HABILITADA && tip > 0 ? (
           <Text style={styles.heroTip}>
             Incluye {formatearUsd(tip)} en propinas registradas
           </Text>

@@ -1,5 +1,7 @@
 import { api } from './api/apiClient';
 import { paramsPendientesDeCobro } from '../queries/filtrosDeOrdenes';
+import { COMANDA_AL_PAGAR } from '../config/funciones';
+import { pedidoCobrado } from './pedidoCobrado';
 import {
   FILTROS_DE_SERVIDOR,
   coincideConElFiltro,
@@ -836,8 +838,10 @@ export const orderService = {
       '/api/orders',
       { active: 'true' },
       (o) =>
-        ACTIVE_STATUSES.includes(o.status) ||
-        o.status === OrderStatusEnum.DELIVERED,
+        (ACTIVE_STATUSES.includes(o.status) ||
+          o.status === OrderStatusEnum.DELIVERED) &&
+        // Con la comanda al cobrar, la estacion solo ve pedidos ya cobrados.
+        (!COMANDA_AL_PAGAR || pedidoCobrado(o.paymentStatus)),
       callback,
     );
   },

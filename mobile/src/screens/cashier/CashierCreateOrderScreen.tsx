@@ -62,6 +62,7 @@ import { getToboConfig, ToboContainer } from '../../constants/toboRegistry';
 import { useBusquedaDeProductos } from '../../hooks/useBusquedaDeProductos';
 import { useTarifas, useVocab } from '../../config/hooks';
 import { pctTexto, totalesDeSubtotal } from '../../config/totalesDeOrden';
+import { COMANDA_AL_PAGAR } from '../../config/funciones';
 
 const SECTOR_LABELS: Record<ZoneSectorEnum, string> = {
   [ZoneSectorEnum.EVENTO]: '\u{1F389} Evento',
@@ -344,40 +345,44 @@ export const CashierCreateOrderScreen: React.FC = () => {
     // Orden creada: el proximo checkout desde esta pantalla es otro pedido
     checkoutRequestIdRef.current = genClientRequestId();
 
-    // Encolar comanda para impresion
-    const comandaItems = items.map((ci) => ({
-      productId: ci.product.id,
-      productName: ci.product.name,
-      quantity: ci.quantity,
-      unitPrice: ci.product.price,
-      totalPrice: ci.product.price * ci.quantity,
-      notes: ci.notes ?? null,
-      station: ci.product.station ?? null,
-    }));
-    printQueueService
-      .enqueuePrintComanda(
-        {
-          id: newOrderId,
-          tableId,
-          tableName,
-          sector: sector ?? null,
-          orderType,
-          notes: notes ?? null,
-        },
-        comandaItems,
-        {
-          waiterName: selectedWaiter?.waiterName ?? undefined,
-          cajaSummary: true,
-        },
-      )
-      .catch((err) =>
-        console.error('[PrintQueue] Error encolando comanda:', err),
-      );
+    // Comanda y ficha de barra: con COMANDA_AL_PAGAR salen al cobrar (comanda
+    // al cobrar en CashierPaymentScreen), no al crear el pedido.
+    if (!COMANDA_AL_PAGAR) {
+      // Encolar comanda para impresion
+      const comandaItems = items.map((ci) => ({
+        productId: ci.product.id,
+        productName: ci.product.name,
+        quantity: ci.quantity,
+        unitPrice: ci.product.price,
+        totalPrice: ci.product.price * ci.quantity,
+        notes: ci.notes ?? null,
+        station: ci.product.station ?? null,
+      }));
+      printQueueService
+        .enqueuePrintComanda(
+          {
+            id: newOrderId,
+            tableId,
+            tableName,
+            sector: sector ?? null,
+            orderType,
+            notes: notes ?? null,
+          },
+          comandaItems,
+          {
+            waiterName: selectedWaiter?.waiterName ?? undefined,
+            cajaSummary: true,
+          },
+        )
+        .catch((err) =>
+          console.error('[PrintQueue] Error encolando comanda:', err),
+        );
 
-    // Ficha de barra (QR + saldo). No bloquea el flujo.
-    enqueuePrintFicha(newOrderId, {
-      waiterName: selectedWaiter?.waiterName ?? undefined,
-    }).catch(() => {});
+      // Ficha de barra (QR + saldo). No bloquea el flujo.
+      enqueuePrintFicha(newOrderId, {
+        waiterName: selectedWaiter?.waiterName ?? undefined,
+      }).catch(() => {});
+    }
 
     // Log event en sesion de caja activa
     cashRegisterService
@@ -783,39 +788,45 @@ export const CashierCreateOrderScreen: React.FC = () => {
           </View>
 
           <View style={styles.buttonsRow}>
-            <View
-              style={[
-                styles.sendButtonWrapper,
-                isSending && styles.sendButtonWrapperDisabled,
-                { flex: 1 },
-              ]}
-            >
-              <TouchableOpacity
-                onPress={handleSendOrder}
-                disabled={isSending}
-                activeOpacity={0.9}
+            {/* Con COMANDA_AL_PAGAR no hay "Enviar" sin cobrar: todo pedido nuevo va al cobro */}
+            {!COMANDA_AL_PAGAR && (
+              <View
+                style={[
+                  styles.sendButtonWrapper,
+                  isSending && styles.sendButtonWrapperDisabled,
+                  { flex: 1 },
+                ]}
               >
-                <LinearGradient
-                  colors={[COLORS.gradientStart, COLORS.gradientEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.sendButton}
+                <TouchableOpacity
+                  onPress={handleSendOrder}
+                  disabled={isSending}
+                  activeOpacity={0.9}
                 >
-                  {isSending ? (
-                    <ActivityIndicator size="small" color={COLORS.background} />
-                  ) : (
-                    <>
-                      <Ionicons
-                        name="send"
-                        size={16}
+                  <LinearGradient
+                    colors={[COLORS.gradientStart, COLORS.gradientEnd]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.sendButton}
+                  >
+                    {isSending ? (
+                      <ActivityIndicator
+                        size="small"
                         color={COLORS.background}
                       />
-                      <Text style={styles.sendButtonText}>Enviar</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
+                    ) : (
+                      <>
+                        <Ionicons
+                          name="send"
+                          size={16}
+                          color={COLORS.background}
+                        />
+                        <Text style={styles.sendButtonText}>Enviar</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View
               style={[

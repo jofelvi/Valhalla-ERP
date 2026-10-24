@@ -56,7 +56,11 @@ import { useTarifas } from '../../config/hooks';
 import { pctTexto } from '../../config/totalesDeOrden';
 import { tarifasDeOrden } from '../../config/tarifasDeOrden';
 import { showAlert } from '../../utils/alert';
-import { CREDITO_HABILITADO } from '../../config/funciones';
+import { COMANDA_AL_PAGAR, CREDITO_HABILITADO } from '../../config/funciones';
+import {
+  enviarComandaDeOrden,
+  pedidoCobrado,
+} from '../../services/comandaAlPagar';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'CashierPayment'>;
@@ -267,6 +271,8 @@ export const CashierPaymentScreen: React.FC = () => {
   const processPendingPayment = async () => {
     if (!order || !user) return;
     setIsProcessing(true);
+    // Estado previo a este cobro: la comanda al cobrar sale una sola vez por orden.
+    const yaCobrada = pedidoCobrado(order.paymentStatus);
 
     try {
       // 1. Crear cuenta por cobrar en el backend
@@ -291,6 +297,13 @@ export const CashierPaymentScreen: React.FC = () => {
         status: OrderStatusEnum.CREDIT,
         pendingPayments: null,
       });
+
+      // Credito: la orden ya se entrego, asi que cocina la produce igual (fire-and-forget)
+      if (COMANDA_AL_PAGAR && !yaCobrada) {
+        void enviarComandaDeOrden(order.id, { cajaSummary: true }).catch(
+          () => {},
+        );
+      }
 
       // 3. Liberar mesa si aplica
       if (tableId) {
@@ -334,6 +347,8 @@ export const CashierPaymentScreen: React.FC = () => {
   const processPayment = async () => {
     if (!order || !user) return;
     setIsProcessing(true);
+    // Estado previo a este cobro: la comanda al cobrar sale una sola vez por orden.
+    const yaCobrada = pedidoCobrado(order.paymentStatus);
 
     try {
       const validEntries = paymentEntries.filter(
@@ -426,6 +441,13 @@ export const CashierPaymentScreen: React.FC = () => {
         bcvRate,
         pendingPayments: null,
       });
+
+      // Comanda al cobrar: solo si la orden no estaba ya cobrada (cobro en partes = una comanda)
+      if (COMANDA_AL_PAGAR && !yaCobrada) {
+        void enviarComandaDeOrden(order.id, { cajaSummary: true }).catch(
+          () => {},
+        );
+      }
 
       // 4. Liberar mesa si aplica
       if (tableId) {

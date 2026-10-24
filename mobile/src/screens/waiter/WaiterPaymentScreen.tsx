@@ -32,7 +32,15 @@ import {
   BORDER_RADIUS,
 } from '../../constants';
 import { showAlert } from '../../utils/alert';
-import { CREDITO_HABILITADO } from '../../config/funciones';
+import {
+  CREDITO_HABILITADO,
+  PROPINA_HABILITADA,
+  COMANDA_AL_PAGAR,
+} from '../../config/funciones';
+import {
+  enviarComandaDeOrden,
+  pedidoCobrado,
+} from '../../services/comandaAlPagar';
 import {
   orderService,
   tableService,
@@ -168,6 +176,7 @@ export const WaiterPaymentScreen: React.FC = () => {
   const route = useRoute<ScreenRouteProp>();
   const { orderId, tableId } = route.params;
   const user = useAuthStore((s) => s.user);
+  const customerProfile = useAuthStore((s) => s.customer);
 
   const [order, setOrder] = useState<Order | null>(null);
   const tarifasVigentes = useTarifas();
@@ -234,8 +243,10 @@ export const WaiterPaymentScreen: React.FC = () => {
     return Number.isFinite(n) && n > 0 ? n : 0;
   }, [tipBsInput]);
 
+  // Con PROPINA_HABILITADA apagada la propina queda en 0: no cambia el total
+  // ni viaja al backend (tipAmount = 0).
   const tipUsd = useMemo(
-    () => (bcvRate > 0 ? bsToUsd(tipBs, bcvRate) : 0),
+    () => (PROPINA_HABILITADA && bcvRate > 0 ? bsToUsd(tipBs, bcvRate) : 0),
     [tipBs, bcvRate],
   );
 
@@ -591,6 +602,13 @@ export const WaiterPaymentScreen: React.FC = () => {
         }
       }
 
+      // Estado ANTES del update: si la orden aun no estaba cobrada (ni rechazada),
+      // este pago es el que la cobra y es cuando sale la comanda.
+      const primerCobro =
+        COMANDA_AL_PAGAR &&
+        !order.paymentRejected &&
+        !pedidoCobrado(order.paymentStatus);
+
       await orderService.updateOrder(order.id, updateData);
       if (tableId) {
         await tableService.updateTableStatus(
@@ -598,6 +616,14 @@ export const WaiterPaymentScreen: React.FC = () => {
           TableStatusEnum.CLEANING,
           null,
         );
+      }
+
+      if (primerCobro) {
+        // Fire-and-forget: imprimir nunca debe frenar ni romper el cobro.
+        void enviarComandaDeOrden(order.id, {
+          waiterName: customerProfile?.name ?? user.displayName ?? undefined,
+          cajaSummary: true,
+        }).catch(() => {});
       }
 
       // Navegacion directa: Alert.alert con onPress es inconsistente en web
@@ -860,82 +886,88 @@ export const WaiterPaymentScreen: React.FC = () => {
               </View>
             )}
 
-            <View style={styles.tipBlock}>
-              <View style={styles.tipHeaderRow}>
-                <Ionicons
-                  name="heart-outline"
-                  size={15}
-                  color={COLORS.primary}
-                />
-                <Text style={styles.tipLabel}>Propina (Bs)</Text>
-                {bcvRate <= 0 && (
-                  <Text style={styles.tipDetailLabel}>· cargando tasa…</Text>
-                )}
-              </View>
-              <View style={styles.tipQuickRow}>
-                {[0, 0.1, 0.15, 0.2].map((pct) => {
-                  // Calculo en Bs: % del subtotal en USD * tasa BCV
-                  const calcBs =
-                    bcvRate > 0
-                      ? Math.round(order.total * pct * bcvRate * 100) / 100
-                      : 0;
-                  const label = pct === 0 ? '0%' : `${Math.round(pct * 100)}%`;
-                  const isActive =
-                    Math.abs(tipBs - calcBs) < 0.5 &&
-                    (calcBs > 0 || tipBs === 0);
-                  return (
-                    <TouchableOpacity
-                      key={label}
-                      style={[styles.tipChip, isActive && styles.tipChipActive]}
-                      onPress={() =>
-                        setTipBsInput(calcBs > 0 ? calcBs.toFixed(2) : '')
-                      }
-                      activeOpacity={0.8}
-                    >
-                      <Text
+            {PROPINA_HABILITADA && (
+              <View style={styles.tipBlock}>
+                <View style={styles.tipHeaderRow}>
+                  <Ionicons
+                    name="heart-outline"
+                    size={15}
+                    color={COLORS.primary}
+                  />
+                  <Text style={styles.tipLabel}>Propina (Bs)</Text>
+                  {bcvRate <= 0 && (
+                    <Text style={styles.tipDetailLabel}>· cargando tasa…</Text>
+                  )}
+                </View>
+                <View style={styles.tipQuickRow}>
+                  {[0, 0.1, 0.15, 0.2].map((pct) => {
+                    // Calculo en Bs: % del subtotal en USD * tasa BCV
+                    const calcBs =
+                      bcvRate > 0
+                        ? Math.round(order.total * pct * bcvRate * 100) / 100
+                        : 0;
+                    const label =
+                      pct === 0 ? '0%' : `${Math.round(pct * 100)}%`;
+                    const isActive =
+                      Math.abs(tipBs - calcBs) < 0.5 &&
+                      (calcBs > 0 || tipBs === 0);
+                    return (
+                      <TouchableOpacity
+                        key={label}
                         style={[
-                          styles.tipChipText,
-                          isActive && styles.tipChipTextActive,
+                          styles.tipChip,
+                          isActive && styles.tipChipActive,
                         ]}
+                        onPress={() =>
+                          setTipBsInput(calcBs > 0 ? calcBs.toFixed(2) : '')
+                        }
+                        activeOpacity={0.8}
                       >
-                        {label}
-                      </Text>
-                      {pct > 0 && bcvRate > 0 && (
                         <Text
                           style={[
-                            styles.tipChipSubText,
+                            styles.tipChipText,
                             isActive && styles.tipChipTextActive,
                           ]}
                         >
-                          Bs {calcBs.toFixed(0)}
+                          {label}
                         </Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-                <View style={styles.tipInputWrap}>
-                  <Text style={styles.tipInputPrefix}>Bs</Text>
-                  <TextInput
-                    style={styles.tipInput}
-                    value={tipBsInput}
-                    onChangeText={(t) => setTipBsInput(formatAmountInput(t))}
-                    placeholder="0.00"
-                    placeholderTextColor={COLORS.textSecondary}
-                    keyboardType="decimal-pad"
-                  />
+                        {pct > 0 && bcvRate > 0 && (
+                          <Text
+                            style={[
+                              styles.tipChipSubText,
+                              isActive && styles.tipChipTextActive,
+                            ]}
+                          >
+                            Bs {calcBs.toFixed(0)}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <View style={styles.tipInputWrap}>
+                    <Text style={styles.tipInputPrefix}>Bs</Text>
+                    <TextInput
+                      style={styles.tipInput}
+                      value={tipBsInput}
+                      onChangeText={(t) => setTipBsInput(formatAmountInput(t))}
+                      placeholder="0.00"
+                      placeholderTextColor={COLORS.textSecondary}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
                 </View>
+                {tipBs > 0 && (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.tipDetailLabel}>
+                      Propina {tipBs.toFixed(2)} Bs
+                    </Text>
+                    <Text style={styles.tipDetailValue}>
+                      ≈ ${tipUsd.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
               </View>
-              {tipBs > 0 && (
-                <View style={styles.totalRow}>
-                  <Text style={styles.tipDetailLabel}>
-                    Propina {tipBs.toFixed(2)} Bs
-                  </Text>
-                  <Text style={styles.tipDetailValue}>
-                    ≈ ${tipUsd.toFixed(2)}
-                  </Text>
-                </View>
-              )}
-            </View>
+            )}
 
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total a Cobrar</Text>
@@ -1631,7 +1663,7 @@ export const WaiterPaymentScreen: React.FC = () => {
                   ${totalProcessedUsd.toFixed(2)}
                 </Text>
               </View>
-              {tipUsd > 0 && (
+              {PROPINA_HABILITADA && tipUsd > 0 && (
                 <View style={styles.modalRow}>
                   <Text style={styles.modalTipLabel}>Incluye propina</Text>
                   <Text style={styles.modalTipValue}>

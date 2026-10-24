@@ -1,3 +1,4 @@
+import { PROPINA_HABILITADA } from '../../config/funciones';
 import React, { useState, useCallback } from 'react';
 import {
   View,
@@ -337,7 +338,7 @@ export const WaiterSaleDetailScreen: React.FC = () => {
           <Text style={styles.totalLabelMain}>Total</Text>
           <Text style={styles.totalValueMain}>{formatearUsd(order.total)}</Text>
         </View>
-        {(order.tipAmount ?? 0) > 0 ? (
+        {PROPINA_HABILITADA && (order.tipAmount ?? 0) > 0 ? (
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Propina</Text>
             <Text style={[styles.totalValue, { color: COLORS.primaryDark }]}>
