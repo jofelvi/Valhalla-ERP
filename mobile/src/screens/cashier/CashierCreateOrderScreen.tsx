@@ -442,6 +442,7 @@ export const CashierCreateOrderScreen: React.FC = () => {
       navigation.replace('CashierPayment', {
         orderId,
         tableId: isZoneMode ? undefined : tableId,
+        nuevoPedido: true,
       });
     } catch {
       showAlert('Error', 'No se pudo enviar el pedido. Intenta de nuevo.');

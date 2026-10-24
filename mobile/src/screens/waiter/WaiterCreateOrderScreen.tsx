@@ -475,6 +475,7 @@ export const WaiterCreateOrderScreen: React.FC = () => {
           navigation.replace('WaiterPayment', {
             orderId: newOrderId,
             tableId: isZoneMode ? undefined : (tableId ?? undefined),
+            nuevoPedido: true,
           });
         } else {
           const locationLabel =

@@ -32,6 +32,7 @@ import {
   BORDER_RADIUS,
 } from '../../constants';
 import { showAlert } from '../../utils/alert';
+import { useDescartarSinCobrar } from '../../hooks/useDescartarSinCobrar';
 import {
   CREDITO_HABILITADO,
   PROPINA_HABILITADA,
@@ -174,7 +175,12 @@ const formatAmountInput = (text: string): string => {
 export const WaiterPaymentScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
-  const { orderId, tableId } = route.params;
+  const { orderId, tableId, nuevoPedido } = route.params;
+  const { marcarCobrado } = useDescartarSinCobrar(
+    navigation,
+    orderId,
+    nuevoPedido === true,
+  );
   const user = useAuthStore((s) => s.user);
   const customerProfile = useAuthStore((s) => s.customer);
 
@@ -610,6 +616,8 @@ export const WaiterPaymentScreen: React.FC = () => {
         !pedidoCobrado(order.paymentStatus);
 
       await orderService.updateOrder(order.id, updateData);
+      // El cobro quedo registrado: salir de aqui ya no descarta el pedido.
+      marcarCobrado();
       if (tableId) {
         await tableService.updateTableStatus(
           tableId,

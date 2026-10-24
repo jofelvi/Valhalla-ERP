@@ -4,6 +4,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   ForbiddenException,
+  ConflictException,
   OnApplicationBootstrap,
   Logger,
   HttpException,
@@ -3942,6 +3943,53 @@ export class OrdersService implements OnApplicationBootstrap {
     await this.orderModel.deleteOne({ _id: id });
     this.posGateway.notifyOrderDeleted(id);
     return { message: 'Order deleted successfully' };
+  }
+
+  /**
+   * Descarta el pedido que acaba de crear quien lo toma y se arrepiente en la
+   * pantalla de cobro (atras sin cobrar). Con la comanda al cobrar, ese pedido no
+   * imprimio nada: dejarlo "pendiente" en la lista de ordenes solo estorba.
+   *
+   * Solo vale mientras la orden sea PURAMENTE un borrador: sin cobro registrado,
+   * sin pagos, sin nada impreso ni entregado y sin inventario movido. En cuanto
+   * pasa cualquiera de esas cosas, borrarla seria esconder una venta: se rechaza
+   * con 409 y la orden se queda como esta. El borrado y la liberacion de la
+   * mesa son los de `remove`.
+   */
+  async descartarSinCobrar(id: string, user?: AuthUser) {
+    await this.assertWaiterOwnership(id, user);
+    const order = await this.orderModel.findOne({ _id: id }).lean().exec();
+    if (!order) {
+      throw new NotFoundException(`Order with ID ${id} not found`);
+    }
+    const estadoDePago = String(order.paymentStatus ?? '').toLowerCase();
+    const items = (order.items ?? []) as Array<Record<string, unknown>>;
+    const algoSalio = items.some(
+      (it) =>
+        Number(it.printedQty ?? 0) > 0 ||
+        Number(it.deliveredQty ?? 0) > 0 ||
+        Number(it.inventoryConsumedQty ?? 0) > 0,
+    );
+    const pagos = await this.paymentModel.countDocuments({ orderId: id });
+    const pagosPendientes = Array.isArray(
+      (order as { pendingPayments?: unknown }).pendingPayments,
+    )
+      ? ((order as { pendingPayments?: unknown[] }).pendingPayments ?? [])
+          .length
+      : 0;
+
+    if (
+      (estadoDePago !== '' && estadoDePago !== 'pending') ||
+      pagos > 0 ||
+      pagosPendientes > 0 ||
+      algoSalio ||
+      order.inventoryProcessed
+    ) {
+      throw new ConflictException(
+        'La orden ya tiene cobro o productos despachados: no se puede descartar.',
+      );
+    }
+    return this.remove(id, user);
   }
 
   async findPendingVerification() {

@@ -63,6 +63,8 @@ export type RootStackParamList = {
   WaiterPayment: {
     orderId: string;
     tableId?: string;
+    /** Pedido recien creado en este flujo: salir sin cobrar lo descarta. */
+    nuevoPedido?: boolean;
   };
   WaiterCommissions: undefined;
   WaiterCommissionDetail: {
@@ -85,6 +87,8 @@ export type RootStackParamList = {
   CashierPayment: {
     orderId: string;
     tableId?: string;
+    /** Pedido recien creado en este flujo: salir sin cobrar lo descarta. */
+    nuevoPedido?: boolean;
   };
   CashierClose: {
     sessionId: string;

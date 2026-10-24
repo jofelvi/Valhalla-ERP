@@ -629,6 +629,23 @@ export class OrdersController {
     return this.ordersService.removeItemDiscount(id, itemId, body, req.user);
   }
 
+  @Post(':id/descartar-sin-cobrar')
+  @ApiOperation({
+    summary:
+      'Descarta una orden recien creada que aun no se cobro (atras en la pantalla de cobro)',
+  })
+  @ApiResponse({ status: 201, description: 'Orden descartada' })
+  @ApiResponse({
+    status: 409,
+    description: 'La orden ya tiene cobro o productos despachados',
+  })
+  async descartarSinCobrar(
+    @Param('id') id: string,
+    @Req() req: AuthedRequest,
+  ) {
+    return this.ordersService.descartarSinCobrar(id, req.user);
+  }
+
   @Delete(':id')
   @UseGuards(RolesGuard)
   // Ninguna pantalla llama a esto: el POS resetea mesas con

@@ -11,6 +11,7 @@ import { Test } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
 } from '@nestjs/common';
@@ -69,6 +70,7 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
   let orderModel: Record<string, jest.Mock>;
   let tableModel: Record<string, jest.Mock>;
   let userModel: Record<string, jest.Mock>;
+  let paymentModel: Record<string, jest.Mock>;
   let verifyAdminPin: jest.Mock;
   let recordEvent: jest.Mock;
 
@@ -91,6 +93,7 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
         .fn()
         .mockReturnValue(consulta({ _id: 'w-1', name: 'Mesonero' })),
     };
+    paymentModel = { countDocuments: jest.fn().mockResolvedValue(0) };
     verifyAdminPin = jest.fn();
     recordEvent = jest.fn();
 
@@ -109,7 +112,7 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
           useValue: { find: jest.fn().mockReturnValue(consulta([])) },
         },
         { provide: getModelToken('Invoice'), useValue: {} },
-        { provide: getModelToken('Payment'), useValue: {} },
+        { provide: getModelToken('Payment'), useValue: paymentModel },
         {
           provide: PosGateway,
           useValue: {
@@ -392,6 +395,68 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
         ForbiddenException,
       );
       expect(tableModel.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(orderModel.deleteOne).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── descartarSinCobrar: "atras" en la pantalla de cobro ─────────────
+  describe('descartarSinCobrar', () => {
+    const borrador = {
+      _id: 'orden-1',
+      tableId: 'mesa-1',
+      paymentStatus: 'pending',
+      waiterId: 'w-1',
+      items: [{ productId: 'p1', quantity: 2, printedQty: 0, deliveredQty: 0 }],
+    };
+
+    it('borra el borrador sin cobro y libera la mesa con los 3 campos', async () => {
+      orderModel.findOne.mockReturnValue(consulta(borrador));
+
+      await service.descartarSinCobrar('orden-1', mesonero);
+
+      expect(tableModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'mesa-1' },
+        MESA_LIBRE,
+        { new: true },
+      );
+      expect(orderModel.deleteOne).toHaveBeenCalledWith({ _id: 'orden-1' });
+    });
+
+    it.each([
+      ['ya esta marcada pagada', { paymentStatus: 'paid' }],
+      ['espera verificacion', { paymentStatus: 'pending_verification' }],
+      ['trae pagos pendientes cargados', { pendingPayments: [{ amount: 5 }] }],
+      ['ya imprimio un producto', { items: [{ printedQty: 1 }] }],
+      ['ya entrego un producto', { items: [{ deliveredQty: 1 }] }],
+      ['ya movio inventario', { inventoryProcessed: true }],
+    ])('rechaza con 409 y no borra nada si %s', async (_caso, cambio) => {
+      orderModel.findOne.mockReturnValue(consulta({ ...borrador, ...cambio }));
+
+      await expect(
+        service.descartarSinCobrar('orden-1', mesonero),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(orderModel.deleteOne).not.toHaveBeenCalled();
+      expect(tableModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si ya hay un pago registrado en la coleccion de pagos', async () => {
+      orderModel.findOne.mockReturnValue(consulta(borrador));
+      paymentModel.countDocuments.mockResolvedValue(1);
+
+      await expect(
+        service.descartarSinCobrar('orden-1', mesonero),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(orderModel.deleteOne).not.toHaveBeenCalled();
+    });
+
+    it('un mesonero no descarta la orden de otro', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta({ ...borrador, waiterId: 'w-9', userId: 'w-9' }),
+      );
+
+      await expect(
+        service.descartarSinCobrar('orden-1', mesonero),
+      ).rejects.toBeInstanceOf(ForbiddenException);
       expect(orderModel.deleteOne).not.toHaveBeenCalled();
     });
   });

@@ -1022,6 +1022,15 @@ export const orderService = {
     });
   },
 
+  /**
+   * Borra el pedido recien creado cuando se sale del cobro sin cobrar. El servidor
+   * solo lo acepta si es un borrador (sin cobro ni nada impreso o entregado): si no,
+   * responde 409 y la orden queda como esta.
+   */
+  async descartarSinCobrar(orderId: string): Promise<void> {
+    await api.post(`/api/orders/${orderId}/descartar-sin-cobrar`, {});
+  },
+
   async cancelOrderWithPin(
     orderId: string,
     pin: string,

@@ -56,6 +56,7 @@ import { useTarifas } from '../../config/hooks';
 import { pctTexto } from '../../config/totalesDeOrden';
 import { tarifasDeOrden } from '../../config/tarifasDeOrden';
 import { showAlert } from '../../utils/alert';
+import { useDescartarSinCobrar } from '../../hooks/useDescartarSinCobrar';
 import { COMANDA_AL_PAGAR, CREDITO_HABILITADO } from '../../config/funciones';
 import {
   enviarComandaDeOrden,
@@ -129,7 +130,12 @@ const formatAmountInput = (text: string): string => {
 export const CashierPaymentScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
-  const { orderId, tableId } = route.params;
+  const { orderId, tableId, nuevoPedido } = route.params;
+  const { marcarCobrado } = useDescartarSinCobrar(
+    navigation,
+    orderId,
+    nuevoPedido === true,
+  );
   const user = useAuthStore((s) => s.user);
 
   const [order, setOrder] = useState<Order | null>(null);
@@ -297,6 +303,8 @@ export const CashierPaymentScreen: React.FC = () => {
         status: OrderStatusEnum.CREDIT,
         pendingPayments: null,
       });
+      // El cobro quedo registrado: salir de aqui ya no descarta el pedido.
+      marcarCobrado();
 
       // Credito: la orden ya se entrego, asi que cocina la produce igual (fire-and-forget)
       if (COMANDA_AL_PAGAR && !yaCobrada) {
@@ -441,6 +449,8 @@ export const CashierPaymentScreen: React.FC = () => {
         bcvRate,
         pendingPayments: null,
       });
+      // El cobro quedo registrado: salir de aqui ya no descarta el pedido.
+      marcarCobrado();
 
       // Comanda al cobrar: solo si la orden no estaba ya cobrada (cobro en partes = una comanda)
       if (COMANDA_AL_PAGAR && !yaCobrada) {
