@@ -655,4 +655,242 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
       expect(select).toHaveBeenCalledWith('_id name role isActive');
     });
   });
+
+  // ─── update: guardas de dinero del modelo PREPAGO ─────────────────────
+  describe('update: cobro PREPAGO (guardas de dinero)', () => {
+    const cerveza = {
+      _id: 'item-1',
+      productId: 'p1',
+      name: 'Cerveza',
+      quantity: 2,
+      unitPrice: 5,
+      total: 10,
+      sentQty: 2,
+    };
+    const pizza = {
+      productId: 'p2',
+      name: 'Pizza',
+      quantity: 1,
+      unitPrice: 8,
+      total: 8,
+    };
+
+    const ordenCon = (paymentStatus: string | null, status = 'pending') => ({
+      _id: 'orden-1',
+      total: 10,
+      subtotal: 10,
+      serviceCharge: 0,
+      status,
+      paymentStatus,
+      items: [cerveza],
+    });
+
+    const estadoDe = async (p: Promise<unknown>): Promise<number | null> => {
+      try {
+        await p;
+        return null;
+      } catch (err: unknown) {
+        return err instanceof HttpException ? err.getStatus() : -1;
+      }
+    };
+
+    beforeEach(() => {
+      orderModel.findOneAndUpdate.mockImplementation(
+        (_f: unknown, patch: Record<string, unknown>) =>
+          consulta({ _id: 'orden-1', ...patch }),
+      );
+    });
+
+    it('agregar productos a una orden ya cobrada responde 409 y no escribe', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta(ordenCon('pending_verification')),
+      );
+
+      const err = await service
+        .update(
+          'orden-1',
+          { items: [cerveza, pizza] } as unknown as UpdateOrderDto,
+          admin,
+        )
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as ConflictException).message).toBe(
+        'Este pedido ya está cobrado: para agregar productos crea un pedido nuevo.',
+      );
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('tambien bloquea si la orden ya esta paid', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenCon('paid')));
+
+      await expect(
+        estadoDe(
+          service.update(
+            'orden-1',
+            { items: [cerveza, pizza] } as unknown as UpdateOrderDto,
+            admin,
+          ),
+        ),
+      ).resolves.toBe(409);
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('agregar productos a una orden sin cobrar pasa', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenCon('pending')));
+
+      await expect(
+        service.update(
+          'orden-1',
+          { items: [cerveza, pizza] } as unknown as UpdateOrderDto,
+          admin,
+        ),
+      ).resolves.toBeDefined();
+      expect(orderModel.findOneAndUpdate).toHaveBeenCalled();
+    });
+
+    it('quitar productos de una orden cobrada no se bloquea aqui', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta(ordenCon('pending_verification')),
+      );
+
+      await expect(
+        estadoDe(
+          service.update(
+            'orden-1',
+            { items: [] } as unknown as UpdateOrderDto,
+            admin,
+          ),
+        ),
+      ).resolves.toBe(428);
+      // 428 viene del candado de PIN (lo ya comandado), no del 409 nuevo.
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('cobro pending_verification que no cubre el total responde 400 y no escribe', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenCon('pending')));
+
+      const err = await service
+        .update(
+          'orden-1',
+          {
+            paymentStatus: 'pending_verification',
+            pendingPayments: [{ method: 'CASH_USD', amount: 5 }],
+          } as unknown as UpdateOrderDto,
+          admin,
+        )
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as BadRequestException).message).toBe(
+        'El pago no cubre el total: faltan $5.00.',
+      );
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('cobro que cubre el total exacto pasa', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenCon('pending')));
+
+      await expect(
+        service.update(
+          'orden-1',
+          {
+            paymentStatus: 'pending_verification',
+            pendingPayments: [{ method: 'CASH_USD', amount: 10 }],
+          } as unknown as UpdateOrderDto,
+          admin,
+        ),
+      ).resolves.toBeDefined();
+      expect(orderModel.findOneAndUpdate).toHaveBeenCalled();
+    });
+
+    it('pago mixto de dos entradas que suma el total pasa', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenCon('pending')));
+
+      await expect(
+        service.update(
+          'orden-1',
+          {
+            paymentStatus: 'pending_verification',
+            pendingPayments: [
+              { method: 'CASH_USD', amount: 4 },
+              { method: 'PAGO_MOVIL', amount: 6, reference: null },
+            ],
+          } as unknown as UpdateOrderDto,
+          admin,
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('pago mixto que suma menos del total responde 400', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenCon('pending')));
+
+      await expect(
+        estadoDe(
+          service.update(
+            'orden-1',
+            {
+              paymentStatus: 'pending_verification',
+              pendingPayments: [
+                { method: 'CASH_USD', amount: 4 },
+                { method: 'PAGO_MOVIL', amount: 5.9, reference: null },
+              ],
+            } as unknown as UpdateOrderDto,
+            admin,
+          ),
+        ),
+      ).resolves.toBe(400);
+    });
+
+    it('cobro parcial junto con items que suben el total se mide contra el total nuevo', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenCon('pending')));
+
+      // Total nuevo = 10 (cerveza) + 8 (pizza) = 18; el cobro trae solo 10.
+      await expect(
+        estadoDe(
+          service.update(
+            'orden-1',
+            {
+              items: [cerveza, pizza],
+              paymentStatus: 'pending_verification',
+              pendingPayments: [{ method: 'CASH_USD', amount: 10 }],
+            } as unknown as UpdateOrderDto,
+            admin,
+          ),
+        ),
+      ).resolves.toBe(400);
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('en una orden cobrada, productos nuevos + cobro que cubre el total nuevo pasa', async () => {
+      orderModel.findOne.mockReturnValue(
+        consulta(ordenCon('pending_verification')),
+      );
+
+      await expect(
+        service.update(
+          'orden-1',
+          {
+            items: [cerveza, pizza],
+            paymentStatus: 'pending_verification',
+            pendingPayments: [{ method: 'CASH_USD', amount: 18 }],
+          } as unknown as UpdateOrderDto,
+          admin,
+        ),
+      ).resolves.toBeDefined();
+      expect(orderModel.findOneAndUpdate).toHaveBeenCalled();
+    });
+
+    it('una orden cobrada que solo reenvia sus items (entrega) no se bloquea', async () => {
+      orderModel.findOne.mockReturnValue(consulta(ordenCon('paid')));
+
+      await expect(
+        service.update(
+          'orden-1',
+          { items: [cerveza] } as unknown as UpdateOrderDto,
+          admin,
+        ),
+      ).resolves.toBeDefined();
+    });
+  });
 });

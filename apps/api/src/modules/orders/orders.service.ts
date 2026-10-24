@@ -18,6 +18,7 @@ import { UpdateOrderDto, UpdateOrderStatusDto } from './dto/update-order.dto';
 import {
   TableStatusEnum,
   OrderStatusEnum,
+  PaymentStatusEnum,
   UserRoleEnum,
   generarNumeroFactura,
 } from '@odin6/types';
@@ -103,6 +104,13 @@ import {
   sumarJornadas,
 } from '../analytics/panel/panel-rango.util';
 import { deliveryDeltas, inheritItemState } from './item-state.util';
+import {
+  MENSAJE_AGREGAR_A_COBRADA,
+  TOLERANCIA_COBRO,
+  faltaParaCubrir,
+  ordenEstaCobrada,
+  pagosCubrenTotal,
+} from './cobro-guardas.util';
 import { toActorRole } from './to-actor-role.util';
 import { roundMoney } from './round-money.util';
 import { normalizeItemsMoney } from './normalize-items-money.util';
@@ -499,6 +507,14 @@ export class OrdersService implements OnApplicationBootstrap {
         this.posGateway.notifyOrderUpdated({ ...fresh, id: fresh._id });
       }
     }
+  }
+
+  private async leerTotalGuardado(id: string): Promise<number> {
+    const orden = await this.orderModel
+      .findOne({ _id: id }, { total: 1 })
+      .lean()
+      .exec();
+    return Number((orden as { total?: unknown } | null)?.total) || 0;
   }
 
   /**
@@ -1268,6 +1284,10 @@ export class OrdersService implements OnApplicationBootstrap {
     let currentOrden: OrdenParaTotales | null = null;
     let currentCustomerId: string | null = null;
     let editAuth: { id: string | null; name: string | null } | null = null;
+    // Estado de cobro guardado (antes del PATCH) y total resultante del PATCH.
+    let cobradaAntes = false;
+    let totalGuardado = 0;
+    let totalTras: number | null = null;
     if (updateOrderDto.items) {
       const currentForItems = await this.orderModel
         .findOne(
@@ -1283,10 +1303,19 @@ export class OrdersService implements OnApplicationBootstrap {
             tasaIva: 1,
             ivaIncluido: 1,
             configAplicada: 1,
+            total: 1,
+            status: 1,
+            paymentStatus: 1,
           },
         )
         .lean()
         .exec();
+      cobradaAntes = ordenEstaCobrada(
+        (currentForItems as { paymentStatus?: unknown } | null)?.paymentStatus,
+        (currentForItems as { status?: unknown } | null)?.status,
+      );
+      totalGuardado =
+        Number((currentForItems as { total?: unknown } | null)?.total) || 0;
       previousItems =
         (currentForItems?.items as Array<Record<string, unknown>>) ?? [];
       currentOrden = currentForItems as unknown as OrdenParaTotales | null;
@@ -1360,66 +1389,6 @@ export class OrdersService implements OnApplicationBootstrap {
     }
     const lockReason = (updateOrderDto.editReason ?? '').trim() || null;
     delete (updateOrderDto as any).editReason;
-    // Si hay traspaso (tableId cambia), reservamos la mesa destino
-    // ATOMICAMENTE y solo si queda la operacion libramos la mesa origen.
-    let previousTableId: string | null = null;
-    if (updateOrderDto.tableId) {
-      const current = await this.orderModel
-        .findOne({ _id: id }, { tableId: 1 })
-        .lean()
-        .exec();
-      const isTransfer =
-        !!current && current.tableId !== updateOrderDto.tableId;
-
-      if (isTransfer) {
-        previousTableId = current?.tableId ?? null;
-        const claimed = await this.tableModel
-          .findOneAndUpdate(
-            {
-              _id: updateOrderDto.tableId,
-              isAvailable: true,
-              status: { $ne: TableStatusEnum.OCCUPIED },
-            },
-            {
-              status: TableStatusEnum.OCCUPIED,
-              isAvailable: false,
-              orderId: id,
-            },
-            { new: true },
-          )
-          .lean();
-
-        if (!claimed) {
-          const conflicting = await this.orderModel
-            .findOne({
-              _id: { $ne: id },
-              tableId: updateOrderDto.tableId,
-              status: {
-                $in: [
-                  OrderStatusEnum.PENDING,
-                  OrderStatusEnum.IN_PROGRESS,
-                  OrderStatusEnum.READY,
-                ],
-              },
-              isDeleted: { $ne: true },
-            })
-            .lean()
-            .exec();
-          if (conflicting) {
-            const shortId = String(conflicting._id).slice(-8).toUpperCase();
-            throw new BadRequestException(
-              `La mesa destino ya tiene una orden activa (#${shortId}, estado ${conflicting.status}). ` +
-                `No se puede traspasar a una mesa ocupada.`,
-            );
-          }
-          throw new BadRequestException(
-            'La mesa destino acaba de ser ocupada por otro usuario.',
-          );
-        }
-        this.posGateway.notifyTableUpdated({ ...claimed, id: claimed._id });
-      }
-    }
-
     const patchPayload: any = { ...updateOrderDto, updatedAt: new Date() };
     if (patchPayload.items?.length) {
       patchPayload.items = await this.resolveItemNames(patchPayload.items);
@@ -1482,6 +1451,33 @@ export class OrdersService implements OnApplicationBootstrap {
         config.tarifas,
         config.nomina,
       );
+      // ── Agregar productos a una orden ya cobrada (modelo PREPAGO) ──
+      // Si la orden ya está cobrada y el PATCH SUBE el total, esos productos
+      // no tienen cobro: se rechaza salvo que el mismo PATCH traiga un cobro que
+      // cubra el total nuevo. La base es el MAYOR entre el total guardado y el
+      // recalculado con los items previos, para que un total guardado con reglas
+      // viejas no dispare un 409 falso (p. ej. en una entrega).
+      if (cobradaAntes) {
+        const recalculadoAntes = computeOrderTotals(
+          previousItems ?? [],
+          Boolean(waiterFinal),
+          config.tarifas,
+          config.nomina,
+        );
+        const baseTotal = Math.max(totalGuardado, recalculadoAntes.total);
+        const pagosNuevos = (updateOrderDto as { pendingPayments?: unknown })
+          .pendingPayments;
+        const cobroQueCubre =
+          Array.isArray(pagosNuevos) &&
+          pagosCubrenTotal(
+            pagosNuevos as Array<Record<string, unknown>>,
+            totales.total,
+          );
+        if (!cobroQueCubre && totales.total > baseTotal + TOLERANCIA_COBRO) {
+          throw new ConflictException(MENSAJE_AGREGAR_A_COBRADA);
+        }
+      }
+      totalTras = totales.total;
       for (const diff of diferenciasConCliente(updateOrderDto, totales)) {
         this.logger.warn(
           `[orders] PATCH ${id}: el cliente calculo distinto (${diff}); se guarda el del servidor`,
@@ -1503,6 +1499,84 @@ export class OrdersService implements OnApplicationBootstrap {
       const nombre = await this.nombreDelMesonero(patchPayload.waiterId);
       if (nombre) {
         patchPayload.waiterName = nombre;
+      }
+    }
+
+    // Si hay traspaso (tableId cambia), reservamos la mesa destino
+    // ATOMICAMENTE y solo si queda la operacion libramos la mesa origen.
+    let previousTableId: string | null = null;
+    if (updateOrderDto.tableId) {
+      const current = await this.orderModel
+        .findOne({ _id: id }, { tableId: 1 })
+        .lean()
+        .exec();
+      const isTransfer =
+        !!current && current.tableId !== updateOrderDto.tableId;
+
+      if (isTransfer) {
+        previousTableId = current?.tableId ?? null;
+        const claimed = await this.tableModel
+          .findOneAndUpdate(
+            {
+              _id: updateOrderDto.tableId,
+              isAvailable: true,
+              status: { $ne: TableStatusEnum.OCCUPIED },
+            },
+            {
+              status: TableStatusEnum.OCCUPIED,
+              isAvailable: false,
+              orderId: id,
+            },
+            { new: true },
+          )
+          .lean();
+
+        if (!claimed) {
+          const conflicting = await this.orderModel
+            .findOne({
+              _id: { $ne: id },
+              tableId: updateOrderDto.tableId,
+              status: {
+                $in: [
+                  OrderStatusEnum.PENDING,
+                  OrderStatusEnum.IN_PROGRESS,
+                  OrderStatusEnum.READY,
+                ],
+              },
+              isDeleted: { $ne: true },
+            })
+            .lean()
+            .exec();
+          if (conflicting) {
+            const shortId = String(conflicting._id).slice(-8).toUpperCase();
+            throw new BadRequestException(
+              `La mesa destino ya tiene una orden activa (#${shortId}, estado ${conflicting.status}). ` +
+                `No se puede traspasar a una mesa ocupada.`,
+            );
+          }
+          throw new BadRequestException(
+            'La mesa destino acaba de ser ocupada por otro usuario.',
+          );
+        }
+        this.posGateway.notifyTableUpdated({ ...claimed, id: claimed._id });
+      }
+    }
+
+    // ── Cobro parcial del mesonero (modelo PREPAGO) ──
+    // Un pago pendiente de verificar debe cubrir el total que quedará tras el PATCH
+    // (USD, sin propina: la propina va aparte en tipAmount).
+    if (
+      patchPayload.paymentStatus === PaymentStatusEnum.PENDING_VERIFICATION &&
+      Array.isArray(patchPayload.pendingPayments)
+    ) {
+      const totalAPagar = totalTras ?? (await this.leerTotalGuardado(id));
+      const pagos = patchPayload.pendingPayments as Array<
+        Record<string, unknown>
+      >;
+      if (!pagosCubrenTotal(pagos, totalAPagar)) {
+        throw new BadRequestException(
+          `El pago no cubre el total: faltan $${faltaParaCubrir(pagos, totalAPagar).toFixed(2)}.`,
+        );
       }
     }
 

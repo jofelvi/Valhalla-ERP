@@ -1,6 +1,6 @@
 {
   "name": "@odin6/api",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "POS de restaurante - API NestJS",
   "author": "",
   "private": true,
