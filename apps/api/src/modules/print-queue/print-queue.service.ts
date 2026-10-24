@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -34,6 +35,10 @@ import { ConfigsService } from '../configs/configs.service';
 import { moduloActivo } from '../../common/modulos/modulo-activo';
 import { diaMesAnio, horaMinuto } from '../../common/operacion/operacion.util';
 import { completarCabeceraTicket } from './ticket-cabecera.util';
+import {
+  motivoParaRechazarComanda,
+  prepagoActivo,
+} from './comanda-prepago.util';
 
 // Estaciones con control estricto: cada una entrega escaneando SU ficha.
 // Debe coincidir con CONTROLLED_STATIONS de orders.service.
@@ -153,6 +158,19 @@ export class PrintQueueService implements OnModuleInit, OnModuleDestroy {
 
   async create(entrada: CreatePrintJobDto) {
     const createPrintJobDto = await this.completarTicket(entrada);
+    if (
+      prepagoActivo() &&
+      (createPrintJobDto.type === PrintJobType.COMANDA ||
+        createPrintJobDto.type === PrintJobType.FICHA)
+    ) {
+      const motivo = await this.motivoParaRechazarEnPrepago(createPrintJobDto);
+      if (motivo) {
+        this.logger.warn(
+          `[PrintQueue] ${createPrintJobDto.type} rechazada: ${motivo}`,
+        );
+        throw new ConflictException(motivo);
+      }
+    }
     // Fichas de barra (QR de entrega): con el módulo `barTokens` apagado no se reserva ni imprime ninguna.
     if (
       createPrintJobDto.type === PrintJobType.FICHA &&
@@ -187,6 +205,43 @@ export class PrintQueueService implements OnModuleInit, OnModuleDestroy {
       });
     }
     return creado;
+  }
+
+  /**
+   * Prepago: resuelve el pedido de la comanda (orderId, o el sufijo que imprimen los clientes) o
+   * de la ficha (su token firmado) y dice por que no puede salir. Una ficha sin token valido no
+   * tiene pedido, asi que tampoco sale.
+   */
+  private async motivoParaRechazarEnPrepago(
+    dto: CreatePrintJobDto,
+  ): Promise<string | null> {
+    const payload = dto.payload ?? {};
+    let orderId: string | null = null;
+    let productos: string[] = [];
+    if (dto.type === PrintJobType.FICHA) {
+      const token = typeof payload.qrData === 'string' ? payload.qrData : null;
+      const secreto = process.env.FICHA_SECRET || 'dev-ficha-secret-change-me';
+      orderId = token
+        ? (verifyFichaToken(token, secreto)?.orderId ?? null)
+        : null;
+    } else {
+      orderId =
+        dto.orderId ??
+        (await this.ordersService.findRecentOrderIdBySuffix(
+          typeof payload.orderNumber === 'string' ? payload.orderNumber : '',
+        ));
+      const itemsPayload = Array.isArray(payload.items)
+        ? (payload.items as Array<{ name?: unknown }>)
+        : [];
+      productos = [
+        ...itemsPayload.map((i) => String(i?.name ?? '')),
+        ...(dto.items ?? []).map((i) => i.name),
+      ];
+    }
+    const pedido = orderId
+      ? await this.ordersService.resumenParaComanda(orderId)
+      : null;
+    return motivoParaRechazarComanda(pedido, productos);
   }
 
   /**

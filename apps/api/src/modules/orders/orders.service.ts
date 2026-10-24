@@ -3062,6 +3062,39 @@ export class OrdersService implements OnApplicationBootstrap {
     return hit ? String(hit._id) : null;
   }
 
+  /** Estado de cobro y nombres de producto de un pedido, para decidir si su comanda sale (prepago). */
+  async resumenParaComanda(orderId: string): Promise<{
+    paymentStatus?: unknown;
+    status?: unknown;
+    productos: string[];
+  } | null> {
+    let order: Record<string, unknown> | null = null;
+    try {
+      order = (await this.orderModel
+        .findOne(
+          { _id: orderId, isDeleted: { $ne: true } },
+          { paymentStatus: 1, status: 1, items: 1 },
+        )
+        .lean()) as Record<string, unknown> | null;
+    } catch {
+      return null; // id mal formado
+    }
+    if (!order) return null;
+    const items = Array.isArray(order.items)
+      ? (order.items as Array<{ productName?: unknown; name?: unknown }>)
+      : [];
+    const productos = items.flatMap((it) =>
+      [it.productName, it.name].filter(
+        (n): n is string => typeof n === 'string' && n.length > 0,
+      ),
+    );
+    return {
+      paymentStatus: order.paymentStatus,
+      status: order.status,
+      productos,
+    };
+  }
+
   async getFichaByOrderId(orderId: string): Promise<FichaView> {
     const order = await this.orderModel.findOne({ _id: orderId }).exec();
     if (!order || order.isDeleted) {
