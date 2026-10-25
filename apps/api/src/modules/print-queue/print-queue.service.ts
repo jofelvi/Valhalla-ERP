@@ -73,9 +73,12 @@ const PROCESSING_TRABADO_MS = 10 * 60 * 1000;
 const REVISION_TRABADOS_MS = 5 * 60 * 1000;
 
 // Reposicion de comandas del prepago (ver reponerComandasDePrepago).
-const REVISION_PREPAGO_MS = 15_000;
-const ESPERA_COMANDA_APP_MS = 30_000;
-const VENTANA_REPOSICION_MS = 6 * 60 * 60 * 1000;
+// La app nueva manda su comanda ~1 s despues de cobrar; la web la manda ANTES
+// de cobrar (se rechaza) y la caja espera el QR en el mostrador: 12 s basta.
+const REVISION_PREPAGO_MS = 5_000;
+const ESPERA_COMANDA_APP_MS = 12_000;
+// Mas atras no: sacaria de golpe comandas de pedidos que probablemente ya se sirvieron.
+const VENTANA_REPOSICION_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class PrintQueueService implements OnModuleInit, OnModuleDestroy {
@@ -114,8 +117,8 @@ export class PrintQueueService implements OnModuleInit, OnModuleDestroy {
   /**
    * Prepago: todo pedido cobrado sale con su comanda. Las APKs viejas la mandan al crear el
    * pedido (se rechaza por no estar cobrado) y no al cobrar; la app nueva la manda al cobrar,
-   * pero si esa peticion se pierde, cocina tampoco se entera. Cada 15 s se buscan los pedidos
-   * cobrados hace mas de 30 s (tiempo de sobra para que la app mande la suya) sin ninguna
+   * pero si esa peticion se pierde, cocina tampoco se entera. Cada 5 s se buscan los pedidos
+   * cobrados hace mas de 12 s (tiempo de sobra para que la app mande la suya) sin ninguna
    * comanda, y el servidor la arma desde el pedido.
    */
   private async reponerComandasDePrepago(): Promise<void> {
@@ -129,14 +132,35 @@ export class PrintQueueService implements OnModuleInit, OnModuleDestroy {
       );
       if (pedidos.length === 0) return;
       const { timezone } = await this.configs.obtener('operacion');
+      // Una sola consulta para saber cuales ya tienen comanda (no una por pedido).
+      const sufijos = pedidos.map((p) => String(p._id).slice(-8).toUpperCase());
+      const conComanda = (await this.printJobModel
+        .find(
+          {
+            type: PrintJobType.COMANDA,
+            $or: [
+              { orderId: { $in: pedidos.map((p) => String(p._id)) } },
+              { 'payload.orderNumber': { $in: sufijos } },
+            ],
+          },
+          { orderId: 1, 'payload.orderNumber': 1 },
+        )
+        .lean()
+        .exec()) as Array<{
+        orderId?: string;
+        payload?: { orderNumber?: unknown };
+      }>;
+      const yaTienen = new Set<string>();
+      for (const j of conComanda) {
+        if (j.orderId) yaTienen.add(String(j.orderId).slice(-8).toUpperCase());
+        if (typeof j.payload?.orderNumber === 'string') {
+          yaTienen.add(j.payload.orderNumber.toUpperCase());
+        }
+      }
       for (const pedido of pedidos) {
         const id = String(pedido._id);
         const sufijo = id.slice(-8).toUpperCase();
-        const yaTiene = await this.printJobModel.exists({
-          type: PrintJobType.COMANDA,
-          $or: [{ orderId: id }, { 'payload.orderNumber': sufijo }],
-        });
-        if (yaTiene) continue;
+        if (yaTienen.has(sufijo)) continue;
         const instante = new Date();
         const payload = comandaDesdePedido(
           pedido as PedidoParaReponer,

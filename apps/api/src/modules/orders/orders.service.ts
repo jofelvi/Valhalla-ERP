@@ -3068,32 +3068,37 @@ export class OrdersService implements OnApplicationBootstrap {
     desde: Date,
     hasta: Date,
   ): Promise<Array<Record<string, unknown> & { _id: unknown }>> {
-    return (await this.orderModel
-      .find(
-        {
-          isDeleted: { $ne: true },
-          paymentStatus: {
-            $in: [
-              PaymentStatusEnum.PENDING_VERIFICATION,
-              PaymentStatusEnum.PAID,
-              PaymentStatusEnum.PARTIAL,
-            ],
+    return (
+      (await this.orderModel
+        .find(
+          {
+            isDeleted: { $ne: true },
+            paymentStatus: {
+              $in: [
+                PaymentStatusEnum.PENDING_VERIFICATION,
+                PaymentStatusEnum.PAID,
+                PaymentStatusEnum.PARTIAL,
+              ],
+            },
+            status: { $ne: OrderStatusEnum.CANCELLED },
+            updatedAt: { $gte: desde, $lte: hasta },
           },
-          status: { $ne: OrderStatusEnum.CANCELLED },
-          updatedAt: { $gte: desde, $lte: hasta },
-        },
-        {
-          items: 1,
-          tableId: 1,
-          tableName: 1,
-          sector: 1,
-          orderType: 1,
-          waiterName: 1,
-          notes: 1,
-        },
-      )
-      .limit(200)
-      .lean()) as Array<Record<string, unknown> & { _id: unknown }>;
+          {
+            items: 1,
+            tableId: 1,
+            tableName: 1,
+            sector: 1,
+            orderType: 1,
+            waiterName: 1,
+            notes: 1,
+          },
+        )
+        // Los mas recientes primero: sin orden, pasados los 200 del limite siempre
+        // volvian los mismos viejos y los nuevos nunca se revisaban (24/10, 9:28 pm).
+        .sort({ updatedAt: -1 })
+        .limit(300)
+        .lean()) as Array<Record<string, unknown> & { _id: unknown }>
+    );
   }
 
   /** Estado de cobro y nombres de producto de un pedido, para decidir si su comanda sale (prepago). */
