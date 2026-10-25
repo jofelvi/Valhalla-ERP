@@ -24,6 +24,16 @@ interface ProcessorOptions {
   maxJobAgeMs?: number; // descarta jobs más viejos que esto (default 10 min)
 }
 
+/** Tipos de trabajo que esta caja no imprime (`OMITIR_TIPOS`, separados por coma). */
+function tiposOmitidos(): Set<string> {
+  return new Set(
+    (process.env.OMITIR_TIPOS ?? '')
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
 const ENDPOINT_MAP: Record<JobType, string> = {
   receipt: '/print',
   comanda: '/print-comanda',
@@ -163,6 +173,17 @@ async function processJob(
         'Queue',
         `Job ${jobId} no se pudo lockear en server (PATCH falló), abortando`,
       );
+      return;
+    }
+
+    // Tipos que esta caja no imprime (OMITIR_TIPOS=comanda,...): se cierran como
+    // hechos sin papel. Ej.: con solo la ficha (QR) basta y la comanda sobra.
+    if (tiposOmitidos().has(job.type)) {
+      log.info(
+        'Queue',
+        `Job ${jobId} | ${TYPE_LABELS[job.type] ?? job.type} #${orderNum} → OMITIDO (OMITIR_TIPOS)`,
+      );
+      await patchStatus(opts.apiUrl, jobId, 'done');
       return;
     }
 
