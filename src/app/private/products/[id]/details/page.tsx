@@ -1,21 +1,34 @@
+'use client';
+
+import { use } from 'react';
 import { notFound } from 'next/navigation';
 import ProductDetailsClientComponent from '@/features/products/ProductDetailsClientComponent';
-import { api } from '@/services/api/apiClient';
-import { Product } from '@odin6/types';
+import { useProduct } from '@/hooks/useProducts';
+import Loader from '@/components/shared/Loader/Loader';
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-export default async function ProductDetailPage({ params }: PageProps) {
-  const { id } = await params;
+// Se carga en el navegador y no en el servidor: la sesion de next-auth vive en
+// el cliente, y desde el servidor la API respondia 401 sin token, que el
+// catch convertia en un 404 para cualquier producto.
+export default function ProductDetailPage({ params }: PageProps) {
+  const { id } = use(params);
+  const { data: product, isLoading } = useProduct(id);
 
-  try {
-    const product = await api.get<Product>(`/api/products/${id}`);
-    if (!product) return notFound();
-
-    return <ProductDetailsClientComponent product={product} />;
-  } catch {
-    return notFound();
+  if (isLoading) {
+    return (
+      <Loader
+        fullScreen
+        text="Cargando producto..."
+        size="lg"
+        color="primary"
+      />
+    );
   }
+
+  if (!product) notFound();
+
+  return <ProductDetailsClientComponent product={product} />;
 }
