@@ -671,7 +671,13 @@ export const OrderDetailScreen: React.FC<OrderDetailScreenProps> = ({
               // contando en unidades (la barra entrega cerveza por cerveza),
               // pero mostrarlas a secas decia "12 Tobo de Cerveza".
               const qty = item.quantity;
-              const packSize = packSizeOf(item.productId, item.presentationQty);
+              // Presentacion de 1 unidad no es un pack: sin esto un plato salia
+              // como "2 cervezas · $9.00 c/u".
+              const presentacion = packSizeOf(
+                item.productId,
+                item.presentationQty,
+              );
+              const packSize = presentacion > 1 ? presentacion : 0;
               const packs = packSize > 0 ? qty / packSize : 0;
               const isWholePack = packSize > 0 && Number.isInteger(packs);
               // El precio por unidad de un pack (11/12 = $0.92) no es lo que se

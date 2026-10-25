@@ -6,9 +6,12 @@ import {
 } from '../../../services/packConversion';
 import { showAlert } from '../../../utils/alert';
 import { useModal } from '../../../hooks/useModal';
+import { useModulo } from '../../../config/hooks';
 
 export const usePackConversion = (orderId: string | null) => {
   const packConversionModal = useModal('orderDetailPackConversion');
+  // Con el modulo apagado la API responde 404: no se pregunta.
+  const packsActivos = useModulo('packsAndBuckets');
   const [isConvertingPacks, setIsConvertingPacks] = useState(false);
   const [conversionOptions, setConversionOptions] = useState<
     ConversionOption[]
@@ -23,7 +26,7 @@ export const usePackConversion = (orderId: string | null) => {
   );
 
   useEffect(() => {
-    if (!orderId) {
+    if (!orderId || !packsActivos) {
       setConversionOptions([]);
       return;
     }
@@ -40,7 +43,7 @@ export const usePackConversion = (orderId: string | null) => {
     return () => {
       vigente = false;
     };
-  }, [orderId]);
+  }, [orderId, packsActivos]);
 
   const handleExecuteConversion = useCallback(
     async (option: ConversionOption) => {

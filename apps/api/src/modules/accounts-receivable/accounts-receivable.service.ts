@@ -363,9 +363,13 @@ export class AccountsReceivableService {
   }
 
   async create(createAccountReceivableDto: CreateAccountReceivableDto) {
-    const account = await this.accountReceivableModel.create(
-      createAccountReceivableDto,
-    );
+    // El estado se guarda en minuscula ('pending', 'paid'), como lo filtra y lo
+    // escribe el resto de la API. La caja del APK mandaba 'PENDING' y quedaban
+    // cuentas con dos grafias segun el camino por el que se dio el credito.
+    const account = await this.accountReceivableModel.create({
+      ...createAccountReceivableDto,
+      status: String(createAccountReceivableDto.status ?? 'pending').toLowerCase(),
+    });
     const obj = account.toObject();
     // No se espera el SMS: la cuenta ya quedo registrada y el aviso es accesorio.
     void this.notifyCreditBySms({
