@@ -4,7 +4,7 @@ import {
   PaymentMethodEnum,
   PaymentStatusEnum,
 } from '@/shared';
-import { OrderItem } from '@odin6/types';
+import { OrderItem, UltimaEntrega } from '@odin6/types';
 
 export type OcrStatus = 'ok' | 'mismatch' | 'fraud_suspect' | 'failed';
 
@@ -118,6 +118,8 @@ export interface Order {
   paymentRejectionReason?: string | null;
   paymentRejectedAt?: Date | null;
   paymentRejectedBy?: string | null; // userId del que rechazo
+  // Última entrega marcada (quién y cuándo); la escribe la API al despachar.
+  ultimaEntrega?: UltimaEntrega | null;
   tableName?: string | null;
   // Pago de comision al mesonero
   comisionPagada?: boolean;

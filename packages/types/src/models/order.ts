@@ -69,6 +69,14 @@ export interface CancelledOrderItem {
   cancelledAt: Date | string;
 }
 
+export interface UltimaEntrega {
+  porId: string | null; // userId de quien marcó la entrega
+  por: string | null; // nombre, si el token lo traía
+  rol: string | null;
+  estacion: string | null; // BAR, KITCHEN, PIZZA…
+  en: Date | string;
+}
+
 export interface Order {
   id: string;
   orderNumber?: string | null; // Numero legible: "A001-08-04-2026"
@@ -120,6 +128,9 @@ export interface Order {
   paymentRejectionReason?: string | null;
   paymentRejectedAt?: Date | null;
   paymentRejectedBy?: string | null; // userId del que rechazo
+  // Última entrega marcada (por ítem, estación, ficha o POS web): quién y cuándo.
+  // Lo escribe la API al despachar; la zona lo muestra sin pedir los eventos.
+  ultimaEntrega?: UltimaEntrega | null;
   tableName?: string | null;
   comisionPagada?: boolean; // Pago de comisión al mesonero
   comisionPagadaAt?: Date | string | null;

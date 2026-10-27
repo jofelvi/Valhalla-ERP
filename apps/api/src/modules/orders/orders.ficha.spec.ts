@@ -223,6 +223,12 @@ describe('OrdersService - Ficha', () => {
     expect(order.items[0].deliveredQty).toBe(2);
     expect(ficha.items[0].pendingQty).toBe(4);
     expect(order.save).toHaveBeenCalled();
+    // Sello de la última entrega para la zona del POS: quién, estación y cuándo.
+    expect(order.ultimaEntrega).toMatchObject({
+      porId: bar.id,
+      estacion: 'BAR',
+    });
+    expect(order.ultimaEntrega.en).toBeInstanceOf(Date);
   });
 
   // El candado de estacion protege del personal, no del jefe: el admin cubre

@@ -12,6 +12,7 @@ import {
   estadoDeCobro,
   resumenDeCobro,
 } from '@/features/pos/utils/estadoDeCobro';
+import { etiquetaDeDespacho } from '@/features/pos/utils/estadoDeDespacho';
 import { PRIVATE_ROUTES, ZONAS_VISIBLES, ZoneSectorEnum } from '@/shared';
 import { useRouter } from 'next/navigation';
 import {
@@ -485,6 +486,26 @@ export default function ZoneOrdersSection({
                                           {order.items.length} items
                                         </span>
                                       </div>
+
+                                      {/* Despacho: qué salió de las estaciones, quién lo entregó y cuándo */}
+                                      {(() => {
+                                        const et = etiquetaDeDespacho(order, {
+                                          nombreDe: (id) =>
+                                            userMap.get(id)?.name,
+                                          hora: formatSmartTime,
+                                        });
+                                        return (
+                                          <div className="mt-1">
+                                            <Badge
+                                              variant={et.variant}
+                                              className={`px-1.5 py-0.5 text-[10px] shadow-none ${et.className ?? ''}`}
+                                              title={et.title}
+                                            >
+                                              {et.texto}
+                                            </Badge>
+                                          </div>
+                                        );
+                                      })()}
 
                                       {/* Pago rechazado */}
                                       {order.paymentRejected && (

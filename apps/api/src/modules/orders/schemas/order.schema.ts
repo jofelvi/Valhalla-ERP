@@ -5,7 +5,7 @@ import {
   PaymentStatusEnum,
   SERVICE_MODES,
 } from '@odin6/types';
-import type { ServiceMode } from '@odin6/types';
+import type { ServiceMode, UltimaEntrega } from '@odin6/types';
 import type { ConfigDeCalculo } from '../config-de-orden.util';
 
 export type OrderDocument = HydratedDocument<Order>;
@@ -617,6 +617,10 @@ export class Order {
   // Idempotencia del descuento de inventario (motor de consumo)
   @Prop({ default: false })
   inventoryProcessed?: boolean;
+
+  // Última entrega marcada: quién y cuándo. La pinta la zona del POS.
+  @Prop({ type: Object, default: null })
+  ultimaEntrega?: UltimaEntrega | null;
 
   // Nonce de la ficha QR de barra. Se genera perezosamente la primera vez que
   // se produce el token (al mostrar/imprimir la ficha). Rotarlo revoca la

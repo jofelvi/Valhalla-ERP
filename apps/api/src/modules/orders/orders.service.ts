@@ -21,6 +21,7 @@ import {
   PaymentStatusEnum,
   UserRoleEnum,
   generarNumeroFactura,
+  UltimaEntrega,
 } from '@odin6/types';
 import { createInvoiceOnce, facturaDeLaOrden } from '../../common/invoice-once';
 import { PosGateway } from '../websockets/gateways/pos.gateway';
@@ -1666,6 +1667,16 @@ export class OrdersService implements OnApplicationBootstrap {
       );
       if (moves.length) {
         await this.consumeInventoryOnDelivery(id, moves, user as AuthUser);
+        const ultima = this.ultimaEntregaDe(
+          user as AuthUser,
+          (moves[moves.length - 1].item.station as string | undefined) ?? null,
+        );
+        await this.orderModel.updateOne(
+          { _id: id },
+          { $set: { ultimaEntrega: ultima } },
+        );
+        (order as { ultimaEntrega?: UltimaEntrega | null }).ultimaEntrega =
+          ultima;
       }
     }
 
@@ -2495,6 +2506,21 @@ export class OrdersService implements OnApplicationBootstrap {
    * Atomico: usa $inc con arrayFilters. No hay race condition con otros
    * deliver concurrentes para el mismo item.
    */
+  // Sello de la última entrega: quién la marcó y cuándo. Va en la orden para
+  // que la zona del POS lo muestre sin pedir los eventos de cada tarjeta.
+  private ultimaEntregaDe(
+    user: AuthUser,
+    estacion?: string | null,
+  ): UltimaEntrega {
+    return {
+      porId: user?.id ?? null,
+      por: user?.name ?? null,
+      rol: user?.role ?? null,
+      estacion: estacion ? String(estacion).toUpperCase() : null,
+      en: new Date(),
+    };
+  }
+
   async deliverItem(
     orderId: string,
     itemId: string,
@@ -2530,6 +2556,10 @@ export class OrdersService implements OnApplicationBootstrap {
     await this.updateItemFieldByIndex(orderId, itemId, 'deliveredQty', {
       inc,
     });
+    await this.orderModel.updateOne(
+      { _id: orderId },
+      { $set: { ultimaEntrega: this.ultimaEntregaDe(user, item.station) } },
+    );
 
     // Evento de auditoria
     void this.itemEvents.record({
@@ -2658,6 +2688,7 @@ export class OrdersService implements OnApplicationBootstrap {
       };
     }
 
+    order.ultimaEntrega = this.ultimaEntregaDe(user, stationUpper);
     await order.save();
     void this.itemEvents.recordMany(events);
 
@@ -3477,6 +3508,7 @@ export class OrdersService implements OnApplicationBootstrap {
     // tobos mixtos se nombra la variante ("Pilsen") y no el tobo, que es lo
     // que el mesonero tiene que ir a buscar a la barra.
     const avisoItems: Array<{ name: string; qty: number }> = [];
+    let ultimaEstacion: string | null = null;
     for (const d of deliveries) {
       const it = itemsById.get(d.itemId)!;
       const comp = it.composition as CompEntry[] | undefined;
@@ -3492,6 +3524,7 @@ export class OrdersService implements OnApplicationBootstrap {
           delta: d.delta,
         });
         avisoItems.push({ name: entry.variantName, qty: d.delta });
+        ultimaEstacion = (it.station as string | undefined) ?? null;
         void this.itemEvents.record({
           orderId: String(order._id),
           itemId: d.itemId,
@@ -3511,6 +3544,7 @@ export class OrdersService implements OnApplicationBootstrap {
         it.deliveredQty = previous + d.delta;
         itemInvMoves.push({ item: it, delta: d.delta });
         avisoItems.push({ name: String(it.name ?? 'Producto'), qty: d.delta });
+        ultimaEstacion = (it.station as string | undefined) ?? null;
         void this.itemEvents.record({
           orderId: String(order._id),
           itemId: d.itemId,
@@ -3526,6 +3560,9 @@ export class OrdersService implements OnApplicationBootstrap {
           actorRole: toActorRole(user.role),
         });
       }
+    }
+    if (avisoItems.length > 0) {
+      order.ultimaEntrega = this.ultimaEntregaDe(user, ultimaEstacion);
     }
     order.markModified('items');
     // Idempotencia: registrar opId después de aplicar, en el mismo save.

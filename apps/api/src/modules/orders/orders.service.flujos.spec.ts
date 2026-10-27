@@ -337,6 +337,18 @@ describe('OrdersService — flujos de mesa, entrega, borrado y fusion', () => {
         { _id: 'orden-1' },
         { $inc: { 'items.1.deliveredQty': 2 } },
       );
+      // Sello de la última entrega: la zona del POS muestra quién y cuándo.
+      expect(orderModel.updateOne).toHaveBeenCalledWith(
+        { _id: 'orden-1' },
+        {
+          $set: {
+            ultimaEntrega: expect.objectContaining({
+              porId: 'admin-1',
+              en: expect.any(Date),
+            }),
+          },
+        },
+      );
       expect(recordEvent).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'ITEM_DELIVERED',

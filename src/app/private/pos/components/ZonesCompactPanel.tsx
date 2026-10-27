@@ -9,7 +9,9 @@ import {
   ETIQUETA_DE_COBRO,
   estadoDeCobro,
 } from '@/features/pos/utils/estadoDeCobro';
+import { etiquetaDeDespacho } from '@/features/pos/utils/estadoDeDespacho';
 import { Plus, MapPin } from 'lucide-react';
+import { formatSmartTime } from '@/shared/utils/dateHelpers';
 import { useMemo } from 'react';
 
 interface ZonesCompactPanelProps {
@@ -105,6 +107,22 @@ export function ZonesCompactPanel({
                             <Badge
                               variant={et.variant}
                               className="px-1.5 py-0 text-[9px] shadow-none"
+                            >
+                              {et.texto}
+                            </Badge>
+                          );
+                        })()}
+                        {(() => {
+                          const et = etiquetaDeDespacho(order, {
+                            nombreDe: (id) =>
+                              allUsers.find((u) => u.id === id)?.name,
+                            hora: formatSmartTime,
+                          });
+                          return (
+                            <Badge
+                              variant={et.variant}
+                              className={`px-1.5 py-0 text-[9px] shadow-none ${et.className ?? ''}`}
+                              title={et.title}
                             >
                               {et.texto}
                             </Badge>
