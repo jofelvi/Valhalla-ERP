@@ -7,6 +7,11 @@ import { Card } from '@/components/shared/card/card';
 import { Badge } from '@/components/shared/badge/badge';
 import { Button } from '@/components/shared/button/Button';
 import { formatSmartTime } from '@/shared/utils/dateHelpers';
+import {
+  ETIQUETA_DE_COBRO,
+  estadoDeCobro,
+  resumenDeCobro,
+} from '@/features/pos/utils/estadoDeCobro';
 import { PRIVATE_ROUTES, ZONAS_VISIBLES, ZoneSectorEnum } from '@/shared';
 import { useRouter } from 'next/navigation';
 import {
@@ -74,10 +79,15 @@ export default function ZoneOrdersSection({
   const userMap = new Map((allUsers ?? waiters).map((u) => [u.id, u]));
   const waiterMap = userMap;
 
+  // Las órdenes con un pago reportado a la caja salen de la zona: ya están en
+  // la lista de pagos por verificar y aquí solo estorban. El resumen de arriba
+  // las sigue contando para que no se pierdan de vista.
+  const enZona = zoneOrders.filter((o) => estadoDeCobro(o) !== 'por_verificar');
+
   // Filtrar ordenes por mesonero seleccionado (fallback a userId si waiterId es null)
-  const filteredZoneOrders = selectedWaiterId
-    ? zoneOrders.filter((o) => (o.waiterId || o.userId) === selectedWaiterId)
-    : zoneOrders;
+  const delMesonero = (o: Order) =>
+    !selectedWaiterId || (o.waiterId || o.userId) === selectedWaiterId;
+  const filteredZoneOrders = enZona.filter(delMesonero);
 
   // Agrupar ordenes por sector
   const ordersBySector = filteredZoneOrders.reduce<Record<string, Order[]>>(
@@ -137,10 +147,13 @@ export default function ZoneOrdersSection({
     (sum, o) => sum + o.total,
     0,
   );
+  // Cuánto hay sin recibo y cuánto espera a la caja (respeta el filtro de
+  // mesonero e incluye las que se ocultan por estar reportadas).
+  const cobro = resumenDeCobro(zoneOrders.filter(delMesonero));
 
   // Obtener usuarios que tienen ordenes activas para mostrar en filtros (incluye cajeros)
   const waiterIdsWithOrders = new Set(
-    zoneOrders.map((o) => o.waiterId || o.userId).filter(Boolean),
+    enZona.map((o) => o.waiterId || o.userId).filter(Boolean),
   );
   const usersSource = allUsers ?? waiters;
   const waitersWithOrders = usersSource.filter((u) =>
@@ -171,6 +184,25 @@ export default function ZoneOrdersSection({
               </span>
             )}
           </h2>
+          {cobro.sinPago.n > 0 && (
+            <Badge
+              variant="destructive"
+              className="px-2 py-0.5 text-[11px] shadow-none"
+              title="Órdenes sin ningún pago reportado ni aprobado"
+            >
+              Sin pago {cobro.sinPago.n} • ${cobro.sinPago.usd.toFixed(2)}
+            </Badge>
+          )}
+          {cobro.porVerificar.n > 0 && (
+            <Badge
+              variant="warning"
+              className="px-2 py-0.5 text-[11px] shadow-none"
+              title="Reportaron un pago y esperan a la caja: están en la lista de pagos por verificar, no en la zona"
+            >
+              Por verificar {cobro.porVerificar.n} • $
+              {cobro.porVerificar.usd.toFixed(2)} · en caja
+            </Badge>
+          )}
 
           {/* Filtros por mesonero */}
           {waitersWithOrders.length > 0 && (
@@ -188,7 +220,7 @@ export default function ZoneOrdersSection({
                 Todos
               </button>
               {waitersWithOrders.map((waiter) => {
-                const waiterOrderCount = zoneOrders.filter(
+                const waiterOrderCount = enZona.filter(
                   (o) => (o.waiterId || o.userId) === waiter.id,
                 ).length;
                 return (
@@ -372,10 +404,25 @@ export default function ZoneOrdersSection({
                                         <span className="text-[11px] font-mono text-dim">
                                           #{order.id.slice(-6).toUpperCase()}
                                         </span>
-                                        <span
-                                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${getOrderStatusColor(order.status)}`}
-                                        >
-                                          {getOrderStatusText(order.status)}
+                                        <span className="flex items-center gap-1">
+                                          {(() => {
+                                            const e = estadoDeCobro(order);
+                                            if (!e) return null;
+                                            const et = ETIQUETA_DE_COBRO[e];
+                                            return (
+                                              <Badge
+                                                variant={et.variant}
+                                                className="px-1.5 py-0.5 text-[10px] shadow-none"
+                                              >
+                                                {et.texto}
+                                              </Badge>
+                                            );
+                                          })()}
+                                          <span
+                                            className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${getOrderStatusColor(order.status)}`}
+                                          >
+                                            {getOrderStatusText(order.status)}
+                                          </span>
                                         </span>
                                       </div>
 

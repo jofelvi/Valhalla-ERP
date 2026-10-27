@@ -4,6 +4,11 @@ import { Order } from '@/modelTypes/order';
 import { User } from '@/modelTypes/user';
 import { Button } from '@/components/shared/button/Button';
 import { Card } from '@/components/shared/card/card';
+import { Badge } from '@/components/shared/badge/badge';
+import {
+  ETIQUETA_DE_COBRO,
+  estadoDeCobro,
+} from '@/features/pos/utils/estadoDeCobro';
 import { Plus, MapPin } from 'lucide-react';
 import { useMemo } from 'react';
 
@@ -33,6 +38,8 @@ export function ZonesCompactPanel({
   const ordersByZone = useMemo(() => {
     const grouped = new Map<string, Order[]>();
     zoneOrders.forEach((order) => {
+      // Reportó un pago a la caja: ya está en pagos por verificar, no en la zona.
+      if (estadoDeCobro(order) === 'por_verificar') return;
       const zone = order.sector || 'salon_principal';
       if (!grouped.has(zone)) grouped.set(zone, []);
       grouped.get(zone)!.push(order);
@@ -86,10 +93,23 @@ export function ZonesCompactPanel({
                           {order.items.length} items
                         </p>
                       </div>
-                      <div className="flex flex-col items-end ml-1">
+                      <div className="flex flex-col items-end gap-0.5 ml-1">
                         <span className="text-xs font-bold text-brand">
                           ${order.total.toFixed(2)}
                         </span>
+                        {(() => {
+                          const e = estadoDeCobro(order);
+                          if (!e) return null;
+                          const et = ETIQUETA_DE_COBRO[e];
+                          return (
+                            <Badge
+                              variant={et.variant}
+                              className="px-1.5 py-0 text-[9px] shadow-none"
+                            >
+                              {et.texto}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                     </div>
                     {order.waiterId && (
